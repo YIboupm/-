@@ -1,0 +1,16 @@
+[
+  {"employeeId": "E005", "categoryCode": "ACCESSORY", "neededInDays": 12,
+   "fields": {"item": "MON-27-QHD", "quantity": 2, "justification": "Larger screens for month-end reporting"}},
+  {"employeeId": "E003", "categoryCode": "TONER", "neededInDays": 6,
+   "fields": {"printer": "PRN-MAD-0301", "quantity": 3}},
+  {"employeeId": "E003", "categoryCode": "TONER", "neededInDays": 4,
+   "fields": {"printer": "PRN-MAD-0201", "quantity": 4}},
+  {"employeeId": "E004", "categoryCode": "LAPTOP", "neededInDays": 20,
+   "fields": {"item": "LAP-STD", "quantity": 2, "justification": "Two new inside-sales hires"}},
+  {"employeeId": "E005", "categoryCode": "LAPTOP", "neededInDays": 25,
+   "fields": {"item": "LAP-STD", "quantity": 1, "justification": "Replacement for a 2021 laptop"}},
+  {"employeeId": "E003", "categoryCode": "ONBOARDING_KIT", "neededInDays": 14,
+   "fields": {"role": "OFFICE", "headcount": 2, "newHireNames": "Two accounting assistants"}},
+  {"employeeId": "E002", "categoryCode": "ONBOARDING_KIT", "neededInDays": 18,
+   "fields": {"role": "DEVELOPER", "headcount": 3}}
+]

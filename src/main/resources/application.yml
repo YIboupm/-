@@ -1,0 +1,46 @@
+spring:
+  application:
+    name: procurement-intake
+  # Put your DeepSeek key in ./secrets.properties (see secrets.properties.example).
+  # Values in that file override the defaults below.
+  config:
+    import: optional:file:./secrets.properties
+  data:
+    mongodb:
+      uri: ${MONGODB_URI:mongodb://localhost:27017/procurement}
+      auto-index-creation: true
+      representation:
+        big-decimal: decimal128
+
+server:
+  port: 8080
+
+# ---- Model gateway (OpenAI-compatible endpoint) ----
+llm:
+  base-url: https://api.deepseek.com
+  model: deepseek-v4-pro
+  api-key: ${DEEPSEEK_API_KEY:}        # <-- or set llm.api-key in secrets.properties
+  timeout-seconds: 120
+  temperature: 0.1                     # only used when thinking is disabled
+  thinking: disabled                   # enabled = deeper reasoning but much slower (DeepSeek default is enabled)
+  reasoning-effort: high               # low | high | max, only used when thinking is enabled
+
+# ---- Intake (request capture) ----
+intake:
+  max-clarification-rounds: 3          # after this many follow-up questions, hand off to a buyer
+  budget-approval-threshold: 5000      # requests above this total need director approval (warning)
+  currency: EUR
+  buyer-response-days: 3               # service level procurement commits to for special requests
+
+# ---- Downstream procurement ----
+procurement:
+  approval:
+    auto-approve: true                 # demo stub: approve every submitted request immediately
+  consolidation:
+    window-day: TUESDAY                # weekly consolidation window
+    safety-buffer-days: 2              # extra days on top of supplier lead time
+    cron: "0 0 6 * * *"                # daily automatic run at 06:00
+
+logging:
+  level:
+    com.compras.procurement: INFO

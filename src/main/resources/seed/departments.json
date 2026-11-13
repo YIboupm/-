@@ -1,0 +1,8 @@
+[
+  {"name": "Marketing", "costCenter": "CC-MKT-01"},
+  {"name": "Engineering", "costCenter": "CC-ENG-01"},
+  {"name": "IT", "costCenter": "CC-IT-01"},
+  {"name": "Operations", "costCenter": "CC-OPS-01"},
+  {"name": "Sales", "costCenter": "CC-SAL-01"},
+  {"name": "Finance", "costCenter": "CC-FIN-01"}
+]

@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Procurement Hub · Pool &amp; orders</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="brand">Procurement<span>Hub</span></div>
+  <nav>
+    <a href="index.html">New request</a>
+    <a href="pool.html" class="active">Pool &amp; orders</a>
+    <a href="buyer.html">Buyer desk</a>
+    <a href="audit.html">Audit log</a>
+  </nav>
+</header>
+
+<main>
+  <div class="toolbar">
+    <button id="sample">Load sample requests</button>
+    <button id="reset">Reset demo</button>
+    <span class="spacer"></span>
+    <label class="muted">Simulate date <input type="date" id="asOf"></label>
+    <button id="preview">Preview</button>
+    <button class="primary" id="run">Run consolidation</button>
+  </div>
+
+  <div class="grid">
+    <section class="panel" id="runPanel" hidden>
+      <h2>Last run</h2>
+      <div class="summary" id="runSummary"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Demand pool <span class="muted small" id="poolNote"></span></h2>
+      <table>
+        <thead><tr>
+          <th>Item</th><th>Deliver to</th><th class="num">Qty</th><th class="num">Requests</th>
+          <th>Order by</th><th class="num">Unit price</th><th class="num">Saving vs. separate</th><th>Decision</th>
+        </tr></thead>
+        <tbody id="pool"></tbody>
+      </table>
+    </section>
+
+    <section class="panel">
+      <h2>Consolidated purchase orders</h2>
+      <table>
+        <thead><tr>
+          <th>PO</th><th>Item</th><th>Deliver to</th><th class="num">Qty</th><th class="num">Unit</th>
+          <th class="num">Total</th><th class="num">Saved</th><th>Why released</th>
+        </tr></thead>
+        <tbody id="orders"></tbody>
+      </table>
+    </section>
+
+    <section class="panel">
+      <h2>Purchase requests</h2>
+      <table>
+        <thead><tr>
+          <th>Request</th><th>Requester</th><th>Category</th><th>Lines</th><th>Needed by</th>
+          <th class="num">Estimate</th><th>Channel</th><th>Status</th>
+        </tr></thead>
+        <tbody id="requests"></tbody>
+      </table>
+    </section>
+  </div>
+</main>
+
+<script src="common.js"></script>
+<script>
+  const $ = id => document.getElementById(id);
+  const REASON = {
+    URGENT: 'Urgent', CONSOLIDATION_WINDOW: 'Weekly window', BEST_PRICE_REACHED: 'Best price reached', DEADLINE: 'Deadline',
+    SPECIAL_REQUEST: 'Special request'
+  };
+
+  async function init() {
+    const { today } = await api('GET', '/api/demo/today');
+    $('asOf').value = today;
+    $('sample').onclick = () => action(async () => {
+      const r = await api('POST', '/api/demo/sample-requests');
+      toast(`${r.submitted.length} sample requests submitted and pooled`);
+    });
+    $('reset').onclick = () => action(async () => {
+      if (!confirm('Delete all requests, orders and conversations?')) return;
+      await api('POST', '/api/demo/reset');
+      $('runPanel').hidden = true;
+      toast('Demo data reset');
+    });
+    $('preview').onclick = () => action(async () => {});
+    $('asOf').onchange = () => action(async () => {});
+    $('run').onclick = () => action(async () => {
+      const report = await api('POST', `/api/consolidation/run?asOf=${$('asOf').value}`);
+      showRun(report);
+    });
+    await refresh();
+  }
+
+  async function action(fn) {
+    document.querySelectorAll('button').forEach(b => b.disabled = true);
+    try { await fn(); await refresh(); }
+    catch (e) { toast('Error: ' + e.message); }
+    finally { document.querySelectorAll('button').forEach(b => b.disabled = false); }
+  }
+
+  async function refresh() {
+    const asOf = $('asOf').value;
+    const [pool, orders, requests] = await Promise.all([
+      api('GET', `/api/consolidation/pool?asOf=${asOf}`),
+      api('GET', '/api/consolidation/orders'),
+      api('GET', '/api/requests'),
+    ]);
+    renderPool(pool, asOf);
+    renderOrders(orders);
+    renderRequests(requests);
+  }
+
+  function renderPool(groups, asOf) {
+    const day = new Date(asOf + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' });
+    $('poolNote').textContent = `· decisions as of ${day}`;
+    if (!groups.length) {
+      $('pool').innerHTML = '<tr><td colspan="8" class="muted">The pool is empty. Load sample requests or submit one from the assistant.</td></tr>';
+      return;
+    }
+    $('pool').innerHTML = groups.map((g, i) => {
+      const release = g.reasons.length > 0;
+      const price = Number(g.pooledUnitPrice) < Number(g.listUnitPrice)
+        ? `<span class="strike">${money(g.listUnitPrice)}</span>${money(g.pooledUnitPrice)}` : money(g.pooledUnitPrice);
+      const next = g.nextBreakQty ? `<div class="muted small">${g.nextBreakQty - g.totalQuantity} more → ${money(g.nextBreakUnitPrice)}</div>` : '';
+      const lines = g.lines.map(l => `<tr class="sub"><td colspan="2">↳ ${esc(l.requestNumber)} · ${esc(l.requesterName)} (${esc(l.department)})</td>
+          <td class="num">${l.quantity}</td><td></td><td>needed ${esc(l.neededBy)}</td><td colspan="3"></td></tr>`).join('');
+      return `<tr>
+        <td><b>${esc(g.itemName)}</b><div class="muted small">${esc(g.key.sku)} · ${esc(g.supplierName)}</div></td>
+        <td>${esc(g.key.deliverySite)}</td>
+        <td class="num">${g.totalQuantity}</td>
+        <td class="num">${g.requestCount}</td>
+        <td>${esc(g.latestOrderDate || '')}</td>
+        <td class="num">${price}${next}</td>
+        <td class="num ${Number(g.savings) > 0 ? 'saving' : ''}">${money(g.savings)}</td>
+        <td><span class="decision ${release ? 'release' : 'hold'}">${release ? 'Release' : 'Hold'}</span>
+            <div class="muted small">${esc(g.explanation)}</div></td>
+      </tr>${lines}`;
+    }).join('');
+  }
+
+  function renderOrders(orders) {
+    if (!orders.length) {
+      $('orders').innerHTML = '<tr><td colspan="8" class="muted">No purchase orders yet.</td></tr>';
+      return;
+    }
+    $('orders').innerHTML = orders.map(o => {
+      const alloc = o.allocations.map(a => `<tr class="sub"><td></td><td colspan="2">↳ ${esc(a.requestNumber)} · ${esc(a.requesterName)}
+          (${esc(a.department)}) · waited ${a.daysWaited} day(s)</td><td class="num">${a.quantity}</td>
+          <td class="num">${money(a.individualUnitPrice)}</td><td colspan="3" class="muted">price if bought alone</td></tr>`).join('');
+      return `<tr>
+        <td><b>${esc(o.number)}</b><div class="muted small">${esc(o.releaseDate)}</div></td>
+        <td>${esc(o.itemName)}<div class="muted small">${esc(o.supplierName)}</div></td>
+        <td>${esc(o.deliverySite)}</td>
+        <td class="num">${o.totalQuantity}</td>
+        <td class="num">${money(o.unitPrice, o.currency)}</td>
+        <td class="num">${money(o.totalAmount, o.currency)}</td>
+        <td class="num ${Number(o.savings) > 0 ? 'saving' : ''}">${money(o.savings, o.currency)}</td>
+        <td>${o.reasons.map(r => `<span class="tag">${REASON[r] || r}</span>`).join('')}</td>
+      </tr>${alloc}`;
+    }).join('');
+  }
+
+  function renderRequests(requests) {
+    if (!requests.length) {
+      $('requests').innerHTML = '<tr><td colspan="8" class="muted">No requests yet.</td></tr>';
+      return;
+    }
+    $('requests').innerHTML = requests.map(r => `<tr>
+      <td><b>${esc(r.number)}</b>${r.urgent ? ' <span class="tag">urgent</span>' : ''}</td>
+      <td>${esc(r.requester.name)}<div class="muted small">charged to ${esc(r.chargeTo ? r.chargeTo.department + ' · ' + r.chargeTo.costCenter : r.requester.department + ' · ' + r.requester.costCenter)}</div></td>
+      <td>${esc(r.categoryName)}${r.nonStandard ? `<div class="small" style="color:var(--warn)">Special: ${esc(r.specialRequirements.join('; '))}</div>` : ''}</td>
+      <td>${r.lines.map(l => `${l.quantity} × ${esc(l.name)}`).join('<br>')}</td>
+      <td>${esc(r.neededBy)}</td>
+      <td class="num">${money(r.estimatedTotal, r.currency)}</td>
+      <td class="muted">${esc(r.channel)}</td>
+      <td><span class="status ${r.status}">${r.status.replaceAll('_', ' ')}</span></td>
+    </tr>`).join('');
+  }
+
+  function showRun(report) {
+    const released = report.decisions.filter(d => d.reasons.length).length;
+    $('runPanel').hidden = false;
+    $('runSummary').innerHTML = `
+      <div><span class="muted">As of</span><b>${esc(report.asOf)}</b></div>
+      <div><span class="muted">Groups released</span><b>${released} / ${report.decisions.length}</b></div>
+      <div><span class="muted">Purchase orders created</span><b>${report.ordersCreated}</b></div>
+      <div><span class="muted">Saved vs. ordering separately</span><b class="saving">${money(report.savings)}</b></div>`;
+  }
+
+  init().catch(e => toast('Error: ' + e.message));
+</script>
+</body>
+</html>

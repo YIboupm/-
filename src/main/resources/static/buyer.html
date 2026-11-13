@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Procurement Hub · Buyer desk</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="brand">Procurement<span>Hub</span></div>
+  <nav>
+    <a href="index.html">New request</a>
+    <a href="pool.html">Pool &amp; orders</a>
+    <a href="buyer.html" class="active">Buyer desk</a>
+    <a href="audit.html">Audit log</a>
+  </nav>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>Special requests waiting for a buyer <span class="muted small" id="count"></span></h2>
+    <div id="list"></div>
+  </section>
+</main>
+
+<script src="common.js"></script>
+<script>
+  const STATUS_LABEL = { MET: 'Met', NOT_MET: 'Not met', UNKNOWN: 'Not in catalog' };
+
+  async function load() {
+    const requests = await api('GET', '/api/buyer/requests');
+    document.getElementById('count').textContent = `· ${requests.length} open`;
+    document.getElementById('list').innerHTML = requests.length ? requests.map(card).join('')
+      : '<div class="placeholder">No special requests. Standard requests are approved and pooled automatically.</div>';
+    requests.forEach(bind);
+  }
+
+  function card(r) {
+    const line = r.lines[0];
+    const checks = (r.requirementChecks || []).map(k => `<tr>
+        <td>${esc(k.requirement.description)} <span class="muted small">${k.requirement.strength === 'preference' ? 'preference' : 'must have'}</span></td>
+        <td class="muted">${k.actual ? 'Catalog: ' + esc(k.actual) : 'Catalog does not specify this'}</td>
+        <td style="width:1%"><span class="check ${k.status}">${STATUS_LABEL[k.status]}</span></td></tr>`).join('');
+    const qty = line ? line.quantity : 1;
+    return `<div class="card" id="card-${r.id}">
+      <div style="display:flex;justify-content:space-between;align-items:baseline">
+        <div><b>${esc(r.number)}</b> · ${esc(r.categoryName)}
+          <span class="muted"> · ${esc(r.requester.name)} (${esc(r.requester.department)}),
+          charged to <b>${esc(r.chargeTo ? r.chargeTo.department + ' · ' + r.chargeTo.costCenter : r.requester.costCenter)}</b></span></div>
+        <div class="muted">needed by <b>${esc(r.neededBy || 'not given')}</b> · ${esc(r.deliverySite)}</div>
+      </div>
+
+      <div class="section-title">Employee's own words</div>
+      <div class="quote">${esc(r.originalRequest || '(not recorded)')}</div>
+
+      <div class="section-title">Not covered by the standard catalog</div>
+      <ul class="issues">${r.specialRequirements.map(s => `<li class="WARNING">${esc(s)}</li>`).join('')}</ul>
+
+      ${checks ? `<div class="section-title">All stated requirements, checked against the catalog</div><table><tbody>${checks}</tbody></table>` : ''}
+
+      ${line ? `<div class="section-title">Closest standard item (reference only)</div>
+        <div>${line.quantity} × ${esc(line.name)} <span class="muted">(${esc(line.sku)}, ${money(line.estimatedUnitPrice, r.currency)} each)</span>
+        ${r.mappingRationale ? `<div class="muted small">AI note: ${esc(r.mappingRationale)}</div>` : ''}</div>` : ''}
+
+      <div class="section-title">Your sourcing decision</div>
+      <div class="form-row">
+        <input type="text" placeholder="Item you sourced, e.g. MacBook Pro 16&quot; M4 Max, 64 GB" data-f="description">
+        <input type="text" placeholder="Supplier" data-f="supplierName">
+        <input type="text" placeholder="Qty" value="${qty}" data-f="quantity">
+        <input type="text" placeholder="Unit price (EUR)" data-f="unitPrice">
+      </div>
+      <div class="form-row" style="grid-template-columns: 1fr">
+        <input type="text" placeholder="Note to the employee, or the reason if you reject" data-f="note">
+      </div>
+      <div class="actions">
+        <button class="primary" data-act="approve">Approve and order</button>
+        <button data-act="reject">Reject</button>
+      </div>
+    </div>`;
+  }
+
+  function bind(r) {
+    const el = document.getElementById('card-' + r.id);
+    const val = f => el.querySelector(`[data-f="${f}"]`).value.trim();
+    el.querySelector('[data-act="approve"]').onclick = () => act(async () => {
+      await api('POST', `/api/buyer/requests/${r.id}/approve`, {
+        description: val('description'), supplierName: val('supplierName'),
+        quantity: parseInt(val('quantity'), 10), unitPrice: val('unitPrice') || null, note: val('note'),
+      });
+      toast(`${r.number} approved and ordered`);
+    });
+    el.querySelector('[data-act="reject"]').onclick = () => act(async () => {
+      await api('POST', `/api/buyer/requests/${r.id}/reject`, { reason: val('note') });
+      toast(`${r.number} rejected`);
+    });
+  }
+
+  async function act(fn) {
+    try { await fn(); await load(); }
+    catch (e) { toast('Error: ' + e.message); }
+  }
+
+  load().catch(e => toast('Error: ' + e.message));
+</script>
+</body>
+</html>

@@ -1,0 +1,285 @@
+[
+  {
+    "code": "LAPTOP",
+    "name": "Laptop",
+    "description": "Company laptops in standard configuration tiers. The employee describes the job; the system picks the tier.",
+    "examples": [
+      "I need a new laptop",
+      "my computer is too slow for video editing",
+      "a laptop for the new analyst"
+    ],
+    "resolution": "DIRECT_SKU",
+    "assetType": null,
+    "intakeEnabled": true,
+    "fields": [
+      {
+        "name": "item",
+        "label": "Configuration",
+        "type": "SKU",
+        "required": true,
+        "description": "Laptop configuration tier. Map the person's job or workload onto the tier whose 'suitable for' list matches."
+      },
+      {
+        "name": "quantity",
+        "label": "Quantity",
+        "type": "INTEGER",
+        "required": true,
+        "min": 1,
+        "max": 50,
+        "description": "Number of laptops."
+      },
+      {
+        "name": "neededBy",
+        "label": "Needed by",
+        "type": "DATE",
+        "required": true,
+        "description": "Date the laptops must be available."
+      },
+      {
+        "name": "deliverySite",
+        "label": "Delivery site",
+        "type": "ENUM",
+        "required": true,
+        "defaultFrom": "employee.site",
+        "allowedValues": [
+          "Madrid HQ",
+          "Barcelona Office"
+        ],
+        "description": "Office where the goods are delivered."
+      },
+      {
+        "name": "chargeTo",
+        "label": "Charge to department",
+        "type": "DEPARTMENT",
+        "required": true,
+        "defaultFrom": "employee.department",
+        "description": "Department that will use the item and pays for it. Defaults to the requester's own department; change it only if the employee says the purchase is for another department."
+      },
+      {
+        "name": "justification",
+        "label": "Business reason",
+        "type": "TEXT",
+        "required": true,
+        "description": "The business reason in the employee's own words. Keep every reason they gave (who it is for, what it will be used for, why a standard option would not work). Do not shorten or paraphrase."
+      },
+      {
+        "name": "urgent",
+        "label": "Urgent",
+        "type": "BOOLEAN",
+        "required": false,
+        "defaultFrom": "const:false",
+        "description": "True only if the employee explicitly says it is urgent or blocking work."
+      }
+    ]
+  },
+  {
+    "code": "ACCESSORY",
+    "name": "Monitor or accessory",
+    "description": "Monitors, docks, keyboards, headsets.",
+    "examples": [
+      "I want a bigger screen",
+      "a headset for calls",
+      "my keyboard broke"
+    ],
+    "resolution": "DIRECT_SKU",
+    "assetType": null,
+    "intakeEnabled": true,
+    "fields": [
+      {
+        "name": "item",
+        "label": "Item",
+        "type": "SKU",
+        "required": true,
+        "description": "Catalog item. Map the described need onto the item whose 'suitable for' list matches."
+      },
+      {
+        "name": "quantity",
+        "label": "Quantity",
+        "type": "INTEGER",
+        "required": true,
+        "min": 1,
+        "max": 100,
+        "description": "Number of units."
+      },
+      {
+        "name": "neededBy",
+        "label": "Needed by",
+        "type": "DATE",
+        "required": true,
+        "description": "Date the items must be available."
+      },
+      {
+        "name": "deliverySite",
+        "label": "Delivery site",
+        "type": "ENUM",
+        "required": true,
+        "defaultFrom": "employee.site",
+        "allowedValues": [
+          "Madrid HQ",
+          "Barcelona Office"
+        ],
+        "description": "Office where the goods are delivered."
+      },
+      {
+        "name": "chargeTo",
+        "label": "Charge to department",
+        "type": "DEPARTMENT",
+        "required": true,
+        "defaultFrom": "employee.department",
+        "description": "Department that will use the item and pays for it. Defaults to the requester's own department; change it only if the employee says the purchase is for another department."
+      },
+      {
+        "name": "justification",
+        "label": "Business reason",
+        "type": "TEXT",
+        "required": false,
+        "description": "The business reason in the employee's own words. Keep every reason they gave (who it is for, what it will be used for, why a standard option would not work). Do not shorten or paraphrase."
+      },
+      {
+        "name": "urgent",
+        "label": "Urgent",
+        "type": "BOOLEAN",
+        "required": false,
+        "defaultFrom": "const:false",
+        "description": "True only if the employee explicitly says it is urgent or blocking work."
+      }
+    ]
+  },
+  {
+    "code": "TONER",
+    "name": "Printer toner",
+    "description": "Toner cartridges. The cartridge model is derived from the printer, so the employee only says which printer.",
+    "examples": [
+      "the printer on the 3rd floor is out of toner",
+      "we need ink for the finance printer"
+    ],
+    "resolution": "ASSET_COMPATIBILITY",
+    "assetType": "PRINTER",
+    "intakeEnabled": true,
+    "fields": [
+      {
+        "name": "printer",
+        "label": "Printer",
+        "type": "ASSET",
+        "required": true,
+        "description": "Asset tag of the printer. Match the location or model the employee mentions against the printers listed."
+      },
+      {
+        "name": "quantity",
+        "label": "Cartridges",
+        "type": "INTEGER",
+        "required": true,
+        "min": 1,
+        "max": 20,
+        "description": "Number of cartridges (or colour sets)."
+      },
+      {
+        "name": "neededBy",
+        "label": "Needed by",
+        "type": "DATE",
+        "required": true,
+        "description": "Date the toner is needed."
+      },
+      {
+        "name": "deliverySite",
+        "label": "Delivery site",
+        "type": "ENUM",
+        "required": true,
+        "defaultFrom": "employee.site",
+        "allowedValues": [
+          "Madrid HQ",
+          "Barcelona Office"
+        ],
+        "description": "Office where the goods are delivered."
+      },
+      {
+        "name": "chargeTo",
+        "label": "Charge to department",
+        "type": "DEPARTMENT",
+        "required": true,
+        "defaultFrom": "employee.department",
+        "description": "Department that will use the item and pays for it. Defaults to the requester's own department; change it only if the employee says the purchase is for another department."
+      },
+      {
+        "name": "urgent",
+        "label": "Urgent",
+        "type": "BOOLEAN",
+        "required": false,
+        "defaultFrom": "const:false",
+        "description": "True only if the employee explicitly says it is urgent, e.g. the printer is already empty."
+      }
+    ]
+  },
+  {
+    "code": "ONBOARDING_KIT",
+    "name": "New-hire equipment kit",
+    "description": "Standard equipment bundle for new employees, expanded from the role into individual items.",
+    "examples": [
+      "three developers start next month",
+      "equipment for a new sales rep"
+    ],
+    "resolution": "ROLE_KIT",
+    "assetType": null,
+    "intakeEnabled": true,
+    "fields": [
+      {
+        "name": "role",
+        "label": "Role kit",
+        "type": "KIT",
+        "required": true,
+        "description": "Standard kit code. Map the new hires' job onto the kit whose 'matches roles' list fits."
+      },
+      {
+        "name": "headcount",
+        "label": "New hires",
+        "type": "INTEGER",
+        "required": true,
+        "min": 1,
+        "max": 30,
+        "description": "Number of new hires with this role."
+      },
+      {
+        "name": "neededBy",
+        "label": "Start date",
+        "type": "DATE",
+        "required": true,
+        "description": "First working day of the new hires; equipment must be ready by then."
+      },
+      {
+        "name": "deliverySite",
+        "label": "Delivery site",
+        "type": "ENUM",
+        "required": true,
+        "defaultFrom": "employee.site",
+        "allowedValues": [
+          "Madrid HQ",
+          "Barcelona Office"
+        ],
+        "description": "Office where the new hires will work."
+      },
+      {
+        "name": "chargeTo",
+        "label": "Charge to department",
+        "type": "DEPARTMENT",
+        "required": true,
+        "defaultFrom": "employee.department",
+        "description": "Department that will use the item and pays for it. Defaults to the requester's own department; change it only if the employee says the purchase is for another department."
+      },
+      {
+        "name": "newHireNames",
+        "label": "New hire names",
+        "type": "TEXT",
+        "required": false,
+        "description": "Optional names of the new hires."
+      },
+      {
+        "name": "urgent",
+        "label": "Urgent",
+        "type": "BOOLEAN",
+        "required": false,
+        "defaultFrom": "const:false",
+        "description": "True only if the employee explicitly says it is urgent."
+      }
+    ]
+  }
+]

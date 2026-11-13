@@ -1,0 +1,46 @@
+[
+  {
+    "code": "OFFICE", "name": "Office kit",
+    "description": "Standard equipment for office and back-office roles.",
+    "matchesRoles": ["finance", "accounting", "HR", "administration", "operations", "legal", "office manager", "assistant"],
+    "items": [
+      {"sku": "LAP-STD", "quantityPerHire": 1},
+      {"sku": "MON-24-FHD", "quantityPerHire": 1},
+      {"sku": "KBM-WL", "quantityPerHire": 1},
+      {"sku": "HS-ANC", "quantityPerHire": 1}
+    ]
+  },
+  {
+    "code": "DEVELOPER", "name": "Developer kit",
+    "description": "Equipment for software engineers and data roles.",
+    "matchesRoles": ["software engineer", "developer", "programmer", "data scientist", "data engineer", "DevOps", "QA engineer"],
+    "items": [
+      {"sku": "LAP-DEV", "quantityPerHire": 1},
+      {"sku": "MON-27-QHD", "quantityPerHire": 1},
+      {"sku": "DOCK-USBC", "quantityPerHire": 1},
+      {"sku": "KBM-WL", "quantityPerHire": 1},
+      {"sku": "HS-ANC", "quantityPerHire": 1}
+    ]
+  },
+  {
+    "code": "DESIGNER", "name": "Designer kit",
+    "description": "Colour-accurate setup for design and media roles.",
+    "matchesRoles": ["graphic designer", "UI designer", "UX designer", "video editor", "photographer", "art director"],
+    "items": [
+      {"sku": "LAP-DES", "quantityPerHire": 1},
+      {"sku": "MON-27-4K", "quantityPerHire": 1},
+      {"sku": "DOCK-USBC", "quantityPerHire": 1},
+      {"sku": "KBM-WL", "quantityPerHire": 1}
+    ]
+  },
+  {
+    "code": "SALES", "name": "Sales kit",
+    "description": "Mobile setup for field and inside sales.",
+    "matchesRoles": ["sales representative", "account manager", "business development", "customer success"],
+    "items": [
+      {"sku": "LAP-STD", "quantityPerHire": 1},
+      {"sku": "HS-ANC", "quantityPerHire": 1},
+      {"sku": "DOCK-USBC", "quantityPerHire": 1}
+    ]
+  }
+]

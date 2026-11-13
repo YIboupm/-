@@ -1,0 +1,16 @@
+[
+  {"assetTag": "PRN-MAD-0301", "type": "PRINTER", "model": "HP LaserJet Pro M404dn",
+   "site": "Madrid HQ", "location": "Madrid HQ, 3rd floor, open area next to the kitchen", "assignedTo": null},
+  {"assetTag": "PRN-MAD-0201", "type": "PRINTER", "model": "Brother HL-L2350DW",
+   "site": "Madrid HQ", "location": "Madrid HQ, 2nd floor, finance department", "assignedTo": null},
+  {"assetTag": "PRN-MAD-0001", "type": "PRINTER", "model": "HP Color LaserJet Pro M454dw",
+   "site": "Madrid HQ", "location": "Madrid HQ, ground floor, reception (colour printer)", "assignedTo": null},
+  {"assetTag": "PRN-BCN-0101", "type": "PRINTER", "model": "Brother HL-L2350DW",
+   "site": "Barcelona Office", "location": "Barcelona Office, main open space", "assignedTo": null},
+  {"assetTag": "LT-1001", "type": "LAPTOP", "model": "Design Workstation Laptop (2022)",
+   "site": "Madrid HQ", "location": "Assigned laptop", "assignedTo": "E001"},
+  {"assetTag": "LT-1002", "type": "LAPTOP", "model": "Developer Laptop (2023)",
+   "site": "Madrid HQ", "location": "Assigned laptop", "assignedTo": "E002"},
+  {"assetTag": "LT-1005", "type": "LAPTOP", "model": "Standard Office Laptop (2021)",
+   "site": "Madrid HQ", "location": "Assigned laptop", "assignedTo": "E005"}
+]

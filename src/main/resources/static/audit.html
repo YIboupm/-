@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Procurement Hub · Audit log</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="brand">Procurement<span>Hub</span></div>
+  <nav>
+    <a href="index.html">New request</a>
+    <a href="pool.html">Pool &amp; orders</a>
+    <a href="buyer.html">Buyer desk</a>
+    <a href="audit.html" class="active">Audit log</a>
+  </nav>
+</header>
+<main>
+  <div class="toolbar">
+    <label class="muted">Show
+      <select id="filter">
+        <option value="">everything</option>
+        <option value="ModelCall">model calls only</option>
+        <option value="events">domain events only</option>
+      </select>
+    </label>
+    <button id="reload">Reload</button>
+  </div>
+  <section class="panel">
+    <h2>Latest 200 entries <span class="muted small">every domain event and every model call, newest first</span></h2>
+    <table>
+      <thead><tr><th style="width:170px">Time</th><th style="width:180px">Type</th><th>Details</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </section>
+</main>
+<script src="common.js"></script>
+<script>
+  let entries = [];
+
+  async function load() {
+    entries = await api('GET', '/api/audit');
+    render();
+  }
+
+  function render() {
+    const f = document.getElementById('filter').value;
+    const shown = entries.filter(e => !f || (f === 'events' ? e.type !== 'ModelCall' : e.type === f));
+    document.getElementById('rows').innerHTML = shown.length ? shown.map(e => {
+      const p = e.payload || {};
+      const summary = e.type === 'ModelCall'
+        ? `${esc(p.purpose)} · ${p.latencyMs} ms · ${p.ok ? 'ok' : 'failed: ' + esc(p.error)}${tokens(p.usage)}`
+        : esc(Object.entries(p).filter(([k]) => k !== 'occurredAt').map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(' · '));
+      return `<tr>
+        <td class="muted">${esc(new Date(e.at).toLocaleString('en-GB'))}</td>
+        <td><span class="tag">${esc(e.type)}</span></td>
+        <td>${summary}${e.type === 'ModelCall' && p.response
+          ? `<details><summary>model output</summary><pre class="json">${esc(pretty(p.response))}</pre></details>` : ''}</td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="3" class="muted">Nothing logged yet.</td></tr>';
+  }
+
+  function tokens(u) {
+    if (!u) return '';
+    const reasoning = u.completion_tokens_details && u.completion_tokens_details.reasoning_tokens;
+    return ` · ${u.prompt_tokens ?? '?'} in / ${u.completion_tokens ?? '?'} out` + (reasoning ? ` (${reasoning} reasoning)` : '');
+  }
+
+  function pretty(text) {
+    try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text; }
+  }
+
+  document.getElementById('filter').onchange = render;
+  document.getElementById('reload').onclick = load;
+  load().catch(e => toast('Error: ' + e.message));
+</script>
+</body>
+</html>

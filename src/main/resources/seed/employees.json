@@ -1,0 +1,12 @@
+[
+  {"id": "E001", "name": "Laura Gomez", "email": "laura.gomez@example.com", "jobRole": "Design Lead",
+   "department": "Marketing", "costCenter": "CC-MKT-01", "site": "Madrid HQ", "managerName": "Pablo Martin"},
+  {"id": "E002", "name": "Javier Ruiz", "email": "javier.ruiz@example.com", "jobRole": "Engineering Manager",
+   "department": "Engineering", "costCenter": "CC-ENG-01", "site": "Madrid HQ", "managerName": "Elena Torres"},
+  {"id": "E003", "name": "Marta Sanchez", "email": "marta.sanchez@example.com", "jobRole": "Office Manager",
+   "department": "Operations", "costCenter": "CC-OPS-01", "site": "Madrid HQ", "managerName": "Elena Torres"},
+  {"id": "E004", "name": "Carlos Perez", "email": "carlos.perez@example.com", "jobRole": "Sales Representative",
+   "department": "Sales", "costCenter": "CC-SAL-01", "site": "Barcelona Office", "managerName": "Nuria Vidal"},
+  {"id": "E005", "name": "Ana Lopez", "email": "ana.lopez@example.com", "jobRole": "Financial Analyst",
+   "department": "Finance", "costCenter": "CC-FIN-01", "site": "Madrid HQ", "managerName": "Miguel Navarro"}
+]

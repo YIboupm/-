@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -28,6 +29,21 @@ public class RequirementMatcher {
         }
         for (Requirement r : requirements) {
             checks.add(checkOne(items, r));
+        }
+        return checks;
+    }
+
+    /** Checks requirements against a single set of attributes (a company resource, a sourced item ...). */
+    public List<RequirementCheck> checkAttributes(Map<String, Object> attributes, List<Requirement> requirements) {
+        List<RequirementCheck> checks = new ArrayList<>();
+        for (Requirement r : requirements == null ? List.<Requirement>of() : requirements) {
+            Object actual = r.attribute() == null || attributes == null ? null : attributes.get(r.attribute());
+            if (actual == null) {
+                checks.add(new RequirementCheck(r, RequirementCheck.Status.UNKNOWN, null));
+            } else {
+                checks.add(new RequirementCheck(r, satisfies(actual, r) ? RequirementCheck.Status.MET
+                        : RequirementCheck.Status.NOT_MET, actual.toString()));
+            }
         }
         return checks;
     }
@@ -90,7 +106,8 @@ public class RequirementMatcher {
         }
         String a = norm(actual);
         String wanted = norm(r.value());
-        return !wanted.isEmpty() && (a.equals(wanted) || a.contains(wanted) || wanted.contains(a));
+        boolean equal = !wanted.isEmpty() && (a.equals(wanted) || a.contains(wanted) || wanted.contains(a));
+        return op.equals("neq") ? !equal : equal;
     }
 
     private static BigDecimal number(Object o) {

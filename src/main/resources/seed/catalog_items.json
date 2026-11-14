@@ -48,6 +48,8 @@
       "storageGb": 512,
       "screenInches": 14,
       "gpuType": "integrated",
+      "gpuComputeApi": "DirectML",
+      "metalSupported": false,
       "gpuVramGb": 0
     }
   },
@@ -93,6 +95,8 @@
       "storageGb": 1000,
       "screenInches": 16,
       "gpuType": "integrated",
+      "gpuComputeApi": "DirectML",
+      "metalSupported": false,
       "gpuVramGb": 0
     }
   },
@@ -139,6 +143,8 @@
       "storageGb": 1000,
       "screenInches": 16,
       "gpuType": "dedicated",
+      "gpuComputeApi": "CUDA",
+      "metalSupported": false,
       "gpuVramGb": 8
     }
   },

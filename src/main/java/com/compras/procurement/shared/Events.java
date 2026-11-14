@@ -36,8 +36,20 @@ public final class Events {
         public String aggregateId() { return requestId; }
     }
 
+    /** The employee chose an existing company resource instead of a purchase. */
+    public record InternalUseConfirmed(String conversationId, String resourceId, String resourceName,
+                                       java.math.BigDecimal avoidedSpend, Instant occurredAt) implements DomainEvent {
+        public String aggregateId() { return conversationId; }
+    }
+
     /** The assistant could not complete the request and passed it to a human buyer. */
     public record IntakeHandedOff(String conversationId, String reason, Instant occurredAt) implements DomainEvent {
         public String aggregateId() { return conversationId; }
+    }
+
+    /** A buyer rejected a request; the employee sees the reason in "My requests". */
+    public record RequestRejected(String requestId, String requestNumber, String reason, Instant occurredAt)
+            implements DomainEvent {
+        public String aggregateId() { return requestId; }
     }
 }

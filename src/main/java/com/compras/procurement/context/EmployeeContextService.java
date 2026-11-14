@@ -34,7 +34,9 @@ public class EmployeeContextService {
         if (name == null) {
             return Optional.empty();
         }
-        return departments.findAll().stream().filter(d -> d.name().equalsIgnoreCase(name.trim())).findFirst();
+        String key = name.trim();
+        return departments.findAll().stream()
+                .filter(d -> d.name().equalsIgnoreCase(key) || d.costCenter().equalsIgnoreCase(key)).findFirst();
     }
 
     public List<Employee> allEmployees() {

@@ -51,13 +51,39 @@ mvn spring-boot:run
    → 员工不用知道硒鼓型号，系统按资产表找到打印机，再按兼容表匹配硒鼓。
    选 *Javier Ruiz*，输入 `three backend developers start on December 1st` → 一句话展开成整套入职设备。
 5. **Pool 页** 把日期改成下周二 → *Run consolidation*：按周窗口合并下单，显示每张采购单省了多少、每个请求等了几天。
-6. **非标需求**：选 *Laura Gomez*，输入 `IT needs a Mac by December 15 for training ML models on Apple Metal; it must have a strong GPU`
-   → 面板列出每条要求与目录数据的比对结果（满足 / 不满足 / 目录未说明，由代码判定，不是 AI）；
-   系统自动换成满足更多硬性要求的档位；费用记到 IT 部门。点 *Send to a buyer as special request*。
-7. **Buyer desk 页**：采购员看到员工原话、未满足的要求和参考品，填写询价结果后 *Approve and order*，系统直接生成采购单（不进合并池）。
-8. **Audit log 页**：每次模型调用（用途、耗时、token 用量、原始输出）和每个状态变化都有记录。
+6. **先查内部资源**：输入 `I need access to a Mac by December 15 to train a small Core ML prototype with Apple Metal. Remote access is fine, the model fits within 8 GB memory, and this is not urgent.`
+   → 系统把运行本应用的 Mac 当作公司共享服务器，实时读取 CPU/GPU 负载、芯片、内存和 Metal 能力；模型返回 `CAN_FULFILL / CANNOT_FULFILL / NEEDS_INFO` 和理由。点 *Use company Mac server · no purchase* 后会话以 `FULFILLED_INTERNAL` 结束，不创建采购申请。
+7. **非标需求**：如果员工说必须带实体 Mac 去客户现场，共享服务器不能满足便携性，继续走标准目录或 *Send to a buyer as special request*。
+8. **Buyer desk 页**：采购员看到员工原话、未满足的要求和参考品，填写询价结果后 *Approve and order*，系统直接生成采购单（不进合并池）。
+9. **Audit log 页**：每次模型调用（用途、耗时、token 用量、原始输出）和每个状态变化都有记录。
 
 `Reset demo` 会清空请求和订单，并重新加载 `seed/` 数据。
+
+## 受理 Agent（借鉴 Codex CLI 的循环）
+
+员工的每条消息都会触发一个 agent 循环（`intake/AgentIntakeService.java`）：
+把完整历史和工具列表发给模型 → 执行模型要求的工具调用 → 把工具结果（**包括错误**）追加到历史 → 再调用模型，
+直到模型用文字作答，或某个工具需要员工回应（选择题、确认提案）。每条消息最多 `intake.max-agent-steps` 步。
+
+问什么、问几步、先查什么，都由模型自己规划；系统只提供工具，并守住四条底线：
+
+| 底线 | 实现 |
+| --- | --- |
+| 事实只来自工具 | 价格、规格、资产、实时负载只能通过工具获得 |
+| "满不满足"由代码判定 | `check_requirements` 用比对器逐条比对，结果为满足 / 不满足 / 数据未说明 |
+| 表单由系统校验 | `propose_*` 校验不通过时，把每条问题返回给模型修正（不在背后改数据） |
+| 提交必须员工确认 | 模型只能"提议"，员工点 Confirm 才会创建请求或占用资源 |
+
+| 工具 | 作用 |
+| --- | --- |
+| `update_plan` | 模型的计划，页面右侧实时显示 |
+| `search_company_resources` | 先调配再采购：闲置笔记本、共享资源，以及这台 Mac 的实时 CPU/GPU 负载（仅在 macOS 上运行时提供） |
+| `search_catalog` | 标准目录：品类表单字段、商品规格、可比对属性、阶梯价、交期、岗位套装 |
+| `check_requirements` | 员工条件 vs 某个商品或资源，确定性比对 |
+| `ask_user` | 1–3 道选择题，界面自动加"其他" |
+| `propose_internal_use` / `propose_standard_request` / `propose_special_request` | 三种结果的提案，校验通过后显示确认卡 |
+
+下游的审批、合并池、下单、采购员工作台仍是状态机，因为它们记录的是单据在公司里的流转，需要审计。
 
 ## 五、架构
 
@@ -71,6 +97,7 @@ catalog        品类注册表：品类模板（要收集哪些字段）、商�
 resolution     字段 → 商品行：按品类策略（直接映射 / 资产兼容 / 岗位套装）确定 SKU，纯规则
 rules          规则引擎：交期、预算阈值、无法匹配等校验，不用模型
 context        员工上下文：模拟 HR 和资产系统，系统已知的信息不问员工
+fulfillment    内部履约：把当前 Mac 模拟为共享服务器，采集实时 CPU/GPU 快照，采购前先判断能否内部满足
 request        采购请求与状态机：SUBMITTED → APPROVED → POOLED → ORDERED，每次变化发事件
 approval       审批桩：订阅"已提交"事件自动批准；换成真实 OA 只改这里
 consolidation  需求池与合并调度：三个放行策略 + 加急通道，原子认领防止重复下单
@@ -116,6 +143,8 @@ admin          种子数据加载、演示工具
 | POST | `/api/intake/conversations/{id}/messages` | 发消息 `{text}` |
 | POST | `/api/intake/conversations/{id}/confirm` | 确认提交 |
 | GET | `/api/requests` | 采购请求列表 |
+| GET | `/api/internal-resources/mac-server` | 当前 Mac 的硬件配置和实时 CPU/GPU 负载 |
+| POST | `/api/intake/conversations/{id}/fulfill-internally` | 使用已匹配的内部资源，不创建采购单 |
 | GET | `/api/consolidation/pool?asOf=yyyy-MM-dd` | 需求池预览（不下单） |
 | POST | `/api/consolidation/run?asOf=yyyy-MM-dd` | 执行合并 |
 | GET | `/api/consolidation/orders` | 合并采购单 |

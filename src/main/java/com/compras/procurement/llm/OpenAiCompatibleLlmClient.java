@@ -21,7 +21,7 @@ import java.util.Map;
  * (base URL https://api.deepseek.com, model deepseek-v4-pro).
  */
 @Component
-public class OpenAiCompatibleLlmClient implements LlmClient {
+public class OpenAiCompatibleLlmClient implements LlmClient, ToolCallingLlmClient {
 
     private final LlmProperties properties;
     private final RestClient restClient;
@@ -80,5 +80,80 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
         } catch (RestClientException e) {
             throw new LlmUnavailableException("Model call failed: " + e.getMessage(), e);
         }
+    }
+
+    @Override
+    public ChatResult chat(List<AgentMessage> messages, List<ToolSpec> tools) {
+        if (!properties.hasApiKey()) {
+            throw new LlmUnavailableException(
+                    "The model API key is not configured. Put llm.api-key=... in secrets.properties and restart.");
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("model", properties.model());
+        body.put("messages", messages.stream().map(this::toWire).toList());
+        if (tools != null && !tools.isEmpty()) {
+            body.put("tools", tools.stream().map(t -> Map.of("type", "function", "function", Map.of(
+                    "name", t.name(), "description", t.description(), "parameters", t.parameters()))).toList());
+            body.put("tool_choice", "auto");
+        }
+        body.put("stream", false);
+        if (properties.thinkingEnabled()) {
+            body.put("thinking", Map.of("type", "enabled"));
+            if (properties.reasoningEffort() != null) {
+                body.put("reasoning_effort", properties.reasoningEffort());
+            }
+        } else {
+            body.put("thinking", Map.of("type", "disabled"));
+            body.put("temperature", properties.temperature());
+        }
+        try {
+            JsonNode response = restClient.post()
+                    .uri("/chat/completions")
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + properties.apiKey())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .body(JsonNode.class);
+            if (response == null) {
+                throw new LlmUnavailableException("The model returned no response.");
+            }
+            JsonNode choice = response.path("choices").path(0);
+            JsonNode message = choice.path("message");
+            java.util.List<ToolCall> calls = new java.util.ArrayList<>();
+            for (JsonNode tc : message.path("tool_calls")) {
+                calls.add(new ToolCall(tc.path("id").asText(), tc.path("function").path("name").asText(),
+                        tc.path("function").path("arguments").asText("{}")));
+            }
+            Map<String, Object> usage = response.has("usage")
+                    ? objectMapper.convertValue(response.get("usage"), new TypeReference<Map<String, Object>>() {
+            }) : Map.of();
+            String content = message.path("content").isNull() ? null : message.path("content").asText(null);
+            String reasoning = message.path("reasoning_content").isNull() ? null
+                    : message.path("reasoning_content").asText(null);
+            if ((content == null || content.isBlank()) && calls.isEmpty()) {
+                throw new LlmUnavailableException("The model returned an empty reply.");
+            }
+            return new ChatResult(content, calls, reasoning, choice.path("finish_reason").asText(null), usage);
+        } catch (RestClientException e) {
+            throw new LlmUnavailableException("Model call failed: " + e.getMessage(), e);
+        }
+    }
+
+    /** OpenAI wire format; null fields are left out because some providers reject them. */
+    private Map<String, Object> toWire(AgentMessage m) {
+        Map<String, Object> wire = new LinkedHashMap<>();
+        wire.put("role", m.role());
+        wire.put("content", m.content() == null ? "" : m.content());
+        if (m.toolCalls() != null && !m.toolCalls().isEmpty()) {
+            wire.put("tool_calls", m.toolCalls().stream().map(c -> Map.of("id", c.id(), "type", "function",
+                    "function", Map.of("name", c.name(), "arguments", c.arguments()))).toList());
+        }
+        if (m.toolCallId() != null) {
+            wire.put("tool_call_id", m.toolCallId());
+        }
+        if (properties.thinkingEnabled() && m.reasoningContent() != null) {
+            wire.put("reasoning_content", m.reasoningContent());
+        }
+        return wire;
     }
 }

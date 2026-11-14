@@ -11,6 +11,7 @@
   <div class="brand">Procurement<span>Hub</span></div>
   <nav>
     <a href="index.html">New request</a>
+    <a href="my-requests.html">My requests</a>
     <a href="pool.html">Pool &amp; orders</a>
     <a href="buyer.html" class="active">Buyer desk</a>
     <a href="audit.html">Audit log</a>
@@ -36,40 +37,78 @@
     requests.forEach(bind);
   }
 
+  function daysUntil(d) {
+    if (!d) return '';
+    const days = Math.round((new Date(d) - new Date(new Date().toDateString())) / 86400000);
+    return days < 0 ? ' · overdue' : ` · in ${days} day${days === 1 ? '' : 's'}`;
+  }
+
   function card(r) {
     const line = r.lines[0];
-    const checks = (r.requirementChecks || []).map(k => `<tr>
-        <td>${esc(k.requirement.description)} <span class="muted small">${k.requirement.strength === 'preference' ? 'preference' : 'must have'}</span></td>
-        <td class="muted">${k.actual ? 'Catalog: ' + esc(k.actual) : 'Catalog does not specify this'}</td>
-        <td style="width:1%"><span class="check ${k.status}">${STATUS_LABEL[k.status]}</span></td></tr>`).join('');
-    const qty = line ? line.quantity : 1;
+    const qty = line ? line.quantity : (r.attributes && r.attributes.quantity) || 1;
+    const title = r.title || r.categoryName;
+    // what to source: the employee's conditions; when a reference item exists, how it compares
+    const checks = r.requirementChecks || [];
+    const reqs = (r.requirements && r.requirements.length ? r.requirements : checks.map(k => k.requirement));
+    const reqList = reqs.length ? '<ul class="reqs">' + reqs.map(q => {
+        const k = checks.find(c => c.requirement.description === q.description);
+        const ref = k ? `<span class="muted small">Reference item: ${esc(k.actual || 'not specified')}</span>
+            <span class="check ${k.status}">${STATUS_LABEL[k.status]}</span>` : '';
+        return `<li><span class="tag ${q.strength === 'preference' ? 'pref' : 'must'}">${q.strength === 'preference' ? 'Nice to have' : 'Must have'}</span>
+          <span style="flex:1">${esc(q.description)}</span>${ref}</li>`;
+      }).join('') + '</ul>'
+      : '<div class="muted">No structured requirements recorded: read the conversation below.</div>';
+    // ruled out: company resources / catalog items the agent considered, plus why the catalog does not fit
+    const alts = (r.alternativesConsidered || []).map(a => `<li><span class="what">${esc(a.name)}</span>
+        <span class="muted small"> · ${esc(a.kind)} ${esc(a.id)}</span><div class="why">${esc(a.whyNot)}</div></li>`);
+    const catalogReasons = (r.specialRequirements || []).filter(s => !s.startsWith('Not using '))
+      .map(s => `<li><span class="what">Standard catalog</span><div class="why">${esc(s)}</div></li>`);
+    const ruled = alts.concat(catalogReasons);
+    const words = (r.originalRequest || '').split('\n').filter(Boolean);
+
     return `<div class="card" id="card-${r.id}">
-      <div style="display:flex;justify-content:space-between;align-items:baseline">
-        <div><b>${esc(r.number)}</b> · ${esc(r.categoryName)}
-          <span class="muted"> · ${esc(r.requester.name)} (${esc(r.requester.department)}),
-          charged to <b>${esc(r.chargeTo ? r.chargeTo.department + ' · ' + r.chargeTo.costCenter : r.requester.costCenter)}</b></span></div>
-        <div class="muted">needed by <b>${esc(r.neededBy || 'not given')}</b> · ${esc(r.deliverySite)}</div>
+      <div class="muted small">${esc(r.number)} · special request · submitted ${esc((r.submittedAt || '').slice(0, 10))}</div>
+      <div class="brief-title">${esc(title)}</div>
+      <div class="muted">${esc(r.requester.name)} · ${esc(r.requester.department)}</div>
+
+      <div class="facts">
+        <div class="fact"><div class="k">Quantity</div><div class="v">${esc(qty)}</div></div>
+        <div class="fact"><div class="k">Needed by</div><div class="v">${esc(r.neededBy || 'not given')}<span class="muted small" style="font-weight:400">${daysUntil(r.neededBy)}</span></div></div>
+        <div class="fact"><div class="k">Deliver to</div><div class="v">${esc(r.deliverySite || '')}</div></div>
+        <div class="fact"><div class="k">Charge to</div><div class="v">${esc(r.chargeTo ? r.chargeTo.department + ' · ' + r.chargeTo.costCenter : r.requester.costCenter)}</div></div>
       </div>
 
-      <div class="section-title">Employee's own words</div>
-      <div class="quote">${esc(r.originalRequest || '(not recorded)')}</div>
+      <div class="section-title">What to source</div>
+      ${reqList}
 
-      <div class="section-title">Not covered by the standard catalog</div>
-      <ul class="issues">${r.specialRequirements.map(s => `<li class="WARNING">${esc(s)}</li>`).join('')}</ul>
+      ${(r.suggestedModels || []).length ? `<div class="section-title">Suggested models · researched by the agent, discussed with the employee</div>
+        ${candidatesHtml(r.suggestedModels)}
+        <div class="muted small" style="margin-top:4px">List prices and specs come from the linked public pages; confirm price and availability with your supplier.</div>` : ''}
 
-      ${checks ? `<div class="section-title">All stated requirements, checked against the catalog</div><table><tbody>${checks}</tbody></table>` : ''}
+      ${r.mappingRationale ? `<div class="section-title">What it is for</div><div>${esc(r.mappingRationale)}</div>` : ''}
+
+      ${ruled.length ? `<div class="section-title">Already ruled out</div><ul class="ruled">${ruled.join('')}</ul>` : ''}
 
       ${line ? `<div class="section-title">Closest standard item (reference only)</div>
-        <div>${line.quantity} × ${esc(line.name)} <span class="muted">(${esc(line.sku)}, ${money(line.estimatedUnitPrice, r.currency)} each)</span>
-        ${r.mappingRationale ? `<div class="muted small">AI note: ${esc(r.mappingRationale)}</div>` : ''}</div>` : ''}
+        <div>${line.quantity} × ${esc(line.name)} <span class="muted">(${esc(line.sku)}, ${money(line.estimatedUnitPrice, r.currency)} each)</span></div>` : ''}
+
+      <details class="convo"><summary>Conversation with the employee (${words.length} lines)</summary>
+        <div class="quote">${esc(r.originalRequest || '(not recorded)')}</div></details>
 
       <div class="section-title">Your sourcing decision</div>
+      ${r.chosenModel ? `<div class="muted small" style="margin-bottom:6px">Pre-filled with the employee's choice. If you buy something else, say why: the employee will see it.</div>` : ''}
       <div class="form-row">
-        <input type="text" placeholder="Item you sourced, e.g. MacBook Pro 16&quot; M4 Max, 64 GB" data-f="description">
+        <input type="text" placeholder="Item you sourced, e.g. MacBook Pro 16&quot; M4 Max, 64 GB" data-f="description" value="${esc(r.chosenModel || '')}">
         <input type="text" placeholder="Supplier" data-f="supplierName">
         <input type="text" placeholder="Qty" value="${qty}" data-f="quantity">
         <input type="text" placeholder="Unit price (EUR)" data-f="unitPrice">
       </div>
+      <div class="form-row subst" style="grid-template-columns: 1fr; display:none">
+        <input type="text" placeholder="Why not the employee's choice? e.g. M4 model discontinued, current model bought" data-f="substitutionReason">
+      </div>
+      ${reqs.length ? `<div class="section-title">Does the item you are buying meet these?</div>
+        <div class="confirm-list">${reqs.map((q, i) => `<label class="opt"><input type="checkbox" data-req="${i}">
+          <span>${esc(q.description)} <span class="muted small">${q.strength === 'preference' ? '(nice to have)' : '(must have)'}</span></span></label>`).join('')}</div>` : ''}
       <div class="form-row" style="grid-template-columns: 1fr">
         <input type="text" placeholder="Note to the employee, or the reason if you reject" data-f="note">
       </div>
@@ -83,10 +122,19 @@
   function bind(r) {
     const el = document.getElementById('card-' + r.id);
     const val = f => el.querySelector(`[data-f="${f}"]`).value.trim();
+    const reqs = (r.requirements && r.requirements.length ? r.requirements : (r.requirementChecks || []).map(k => k.requirement));
+    const desc = el.querySelector('[data-f="description"]');
+    const toggleSubst = () => {
+      const changed = r.chosenModel && desc.value.trim().toLowerCase() !== r.chosenModel.trim().toLowerCase();
+      el.querySelector('.subst').style.display = changed ? '' : 'none';
+    };
+    desc.addEventListener('input', toggleSubst);
     el.querySelector('[data-act="approve"]').onclick = () => act(async () => {
       await api('POST', `/api/buyer/requests/${r.id}/approve`, {
         description: val('description'), supplierName: val('supplierName'),
         quantity: parseInt(val('quantity'), 10), unitPrice: val('unitPrice') || null, note: val('note'),
+        substitutionReason: val('substitutionReason'),
+        confirmations: reqs.map((q, i) => ({ requirement: q.description, met: el.querySelector(`[data-req="${i}"]`).checked })),
       });
       toast(`${r.number} approved and ordered`);
     });

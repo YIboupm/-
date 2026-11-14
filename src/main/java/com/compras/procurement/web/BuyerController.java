@@ -17,10 +17,6 @@ import java.util.List;
 @RequestMapping("/api/buyer/requests")
 public class BuyerController {
 
-    public record ApproveRequest(String description, String supplierName, int quantity, BigDecimal unitPrice,
-                                 String note) {
-    }
-
     public record RejectRequest(String reason) {
     }
 
@@ -37,9 +33,8 @@ public class BuyerController {
 
     /** The buyer records what was sourced; the request is approved and ordered directly. */
     @PostMapping("/{id}/approve")
-    public PurchaseRequest approve(@PathVariable String id, @RequestBody ApproveRequest body) {
-        requests.buyerApprove(id, body.description(), body.supplierName(), body.quantity(), body.unitPrice(),
-                body.note());
+    public PurchaseRequest approve(@PathVariable String id, @RequestBody com.compras.procurement.request.BuyerApproval body) {
+        requests.buyerApprove(id, body);
         return requests.get(id);
     }
 

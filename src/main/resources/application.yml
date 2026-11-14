@@ -27,7 +27,8 @@ llm:
 
 # ---- Intake (request capture) ----
 intake:
-  max-clarification-rounds: 3          # after this many follow-up questions, hand off to a buyer
+  max-clarification-rounds: 3          # (legacy, unused by the agent)
+  max-agent-steps: 14                  # model steps allowed per employee message (agent loop guard)
   budget-approval-threshold: 5000      # requests above this total need director approval (warning)
   currency: EUR
   buyer-response-days: 3               # service level procurement commits to for special requests

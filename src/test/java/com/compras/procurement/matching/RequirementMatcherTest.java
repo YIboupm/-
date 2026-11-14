@@ -61,4 +61,20 @@ class RequirementMatcherTest {
         assertFalse(check.blocksStandard());
         assertTrue(matcher.check(List.of(des), List.of(metal)).get(0).blocksStandard());
     }
+
+    @Test
+    void supportsExplicitlyForbiddenValues() {
+        CatalogItem cuda = new CatalogItem("CUDA", "LAPTOP", "CUDA", "", List.of(), Map.of(),
+                Map.of("gpuComputeApi", "CUDA"), "SUP", "Supplier", "EUR", new BigDecimal(1),
+                List.of(), 1, List.of());
+        CatalogItem directMl = new CatalogItem("DML", "LAPTOP", "DML", "", List.of(), Map.of(),
+                Map.of("gpuComputeApi", "DirectML"), "SUP", "Supplier", "EUR", new BigDecimal(1),
+                List.of(), 1, List.of());
+        Requirement noCuda = new Requirement("Cannot use CUDA", "gpuComputeApi", "neq", "CUDA", "must");
+
+        assertFalse(RequirementMatcher.satisfies("CUDA", noCuda));
+        assertTrue(RequirementMatcher.satisfies("DirectML", noCuda));
+        assertEquals(RequirementCheck.Status.NOT_MET, matcher.check(List.of(cuda), List.of(noCuda)).get(0).status());
+        assertEquals(RequirementCheck.Status.MET, matcher.check(List.of(directMl), List.of(noCuda)).get(0).status());
+    }
 }

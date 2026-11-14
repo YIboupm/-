@@ -77,8 +77,9 @@ public class ProcurementController {
     // ---- requests
 
     @GetMapping("/requests")
-    public List<PurchaseRequest> requests() {
-        return requests.all();
+    public List<PurchaseRequest> requests(
+            @org.springframework.web.bind.annotation.RequestParam(required = false) String employeeId) {
+        return employeeId == null ? requests.all() : requests.of(employeeId);
     }
 
     @GetMapping("/requests/{id}")

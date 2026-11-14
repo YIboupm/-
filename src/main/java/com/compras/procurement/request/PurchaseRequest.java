@@ -39,8 +39,28 @@ public class PurchaseRequest {
     }
 
     /** What a buyer actually sourced for a special request. */
+    /**
+     * What the buyer bought.
+     *
+     * @param chosenModel        the model the employee chose with the agent, if any
+     * @param substituted        true when the buyer bought something else
+     * @param substitutionReason why (e.g. "M4 discontinued; current model")
+     * @param confirmations      the buyer's confirmation of each employee requirement for the bought item
+     */
     public record SourcedItem(String description, String supplierName, int quantity, BigDecimal unitPrice,
-                              BigDecimal total, String buyerNote, Instant sourcedAt) {
+                              BigDecimal total, String buyerNote, Instant sourcedAt, String chosenModel,
+                              Boolean substituted, String substitutionReason,
+                              List<BuyerApproval.Confirmation> confirmations) {
+    }
+
+    /** The model the employee chose (or the agent's first recommendation), as the buyer form shows it. */
+    public String chosenModelLabel() {
+        List<SuggestedModel> models = getSuggestedModels();
+        if (models.isEmpty()) {
+            return null;
+        }
+        SuggestedModel m = models.stream().filter(SuggestedModel::preferred).findFirst().orElse(models.get(0));
+        return m.model() + " · " + m.configuration();
     }
 
     @Id
@@ -73,6 +93,10 @@ public class PurchaseRequest {
     /** True when the employee needs something the standard catalog does not cover. */
     private boolean nonStandard;
     private List<String> specialRequirements;
+    private String title;
+    private List<com.compras.procurement.matching.Requirement> requirements = new ArrayList<>();
+    private List<AlternativeConsidered> alternativesConsidered = new ArrayList<>();
+    private List<SuggestedModel> suggestedModels = new ArrayList<>();
     @Indexed
     private RequestStatus status;
     private List<StatusChange> history = new ArrayList<>();
@@ -112,6 +136,22 @@ public class PurchaseRequest {
         this.submittedAt = submittedAt;
         this.history.add(new StatusChange(null, RequestStatus.SUBMITTED, submittedAt, "Submitted via " + channel));
     }
+
+    /** The structured brief: what is needed and what was ruled out. */
+    public void describe(String title, List<com.compras.procurement.matching.Requirement> requirements,
+                         List<AlternativeConsidered> alternativesConsidered, List<SuggestedModel> suggestedModels) {
+        this.suggestedModels = suggestedModels == null ? List.of() : suggestedModels;
+        this.title = title;
+        this.requirements = requirements == null ? List.of() : requirements;
+        this.alternativesConsidered = alternativesConsidered == null ? List.of() : alternativesConsidered;
+    }
+
+    public String getTitle() { return title; }
+    public List<com.compras.procurement.matching.Requirement> getRequirements() { return requirements; }
+    public List<AlternativeConsidered> getAlternativesConsidered() { return alternativesConsidered; }
+    /** For the buyer form and the employee's view (JSON only). */
+    public String getChosenModel() { return chosenModelLabel(); }
+    public List<SuggestedModel> getSuggestedModels() { return suggestedModels == null ? List.of() : suggestedModels; }
 
     /** Moves the request along its state machine; rejects transitions the lifecycle does not allow. */
     public void moveTo(RequestStatus target, Instant at, String note) {

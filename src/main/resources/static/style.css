@@ -69,6 +69,7 @@ button:disabled { opacity: .5; cursor: default; }
 .status.COLLECTING { background: var(--accent-soft); color: var(--accent); }
 .status.AWAITING_CONFIRMATION { background: var(--warn-soft); color: var(--warn); }
 .status.SUBMITTED, .status.ORDERED, .status.POOLED, .status.APPROVED { background: var(--ok-soft); color: var(--ok); }
+.status.FULFILLED_INTERNAL { background: var(--ok-soft); color: var(--ok); }
 .status.BUYER_REVIEW { background: var(--warn-soft); color: var(--warn); }
 .status.HANDED_OFF, .status.CANCELLED, .status.REJECTED { background: var(--err-soft); color: var(--err); }
 
@@ -100,6 +101,14 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .why { margin-top: 10px; padding: 10px; background: var(--accent-soft); border-radius: 8px; line-height: 1.45; }
 .special-box { padding: 10px 12px; background: var(--warn-soft); border-radius: 8px; color: var(--warn); }
 .special-box ul { margin: 0 0 6px; padding-left: 18px; }
+.resource-card { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: #fafbfc; }
+.resource-card.CAN_FULFILL { border-color: #9fd5b5; background: var(--ok-soft); }
+.resource-card.CANNOT_FULFILL { border-color: #efb2ad; background: var(--err-soft); }
+.resource-card.NEEDS_INFO { border-color: #e8c887; background: var(--warn-soft); }
+.resource-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.resource-verdict { font-size: 11px; font-weight: 700; text-transform: uppercase; white-space: nowrap; }
+.resource-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; margin: 12px 0; font-size: 12px; }
+.resource-evidence, .resource-blockers { margin: 7px 0; line-height: 1.4; }
 .check { font-size: 11px; padding: 2px 7px; border-radius: 9px; white-space: nowrap; }
 .check.MET { background: var(--ok-soft); color: var(--ok); }
 .check.NOT_MET { background: var(--err-soft); color: var(--err); }
@@ -136,3 +145,60 @@ tr.sub td { background: #fafbfc; font-size: 12px; color: var(--muted); }
 .tag { display: inline-block; font-size: 11px; padding: 2px 7px; border-radius: 9px; background: var(--accent-soft); color: var(--accent); margin: 0 4px 2px 0; }
 .toast { position: fixed; bottom: 20px; right: 20px; background: var(--ink); color: #fff; padding: 10px 16px; border-radius: 8px; opacity: 0; transition: opacity .2s; }
 .toast.show { opacity: 1; }
+
+/* ---------- agent ---------- */
+.msg.trace { align-self: flex-start; background: none; color: var(--muted); font-size: 12px; padding: 0 4px; max-width: 100%; }
+.plan { list-style: none; padding: 0; margin: 0 0 6px; }
+.plan li { padding: 3px 0; }
+.plan li span { display: inline-block; width: 18px; color: var(--muted); }
+.plan li.completed { color: var(--muted); text-decoration: line-through; }
+.plan li.in_progress { font-weight: 600; }
+.plan li.in_progress span { color: var(--accent); }
+.proposal { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.proposal.STANDARD { border-color: var(--accent); }
+.proposal.SPECIAL { border-color: var(--warn); }
+.proposal.INTERNAL_USE { border-color: var(--ok); }
+.ptype { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.ptitle { font-size: 15px; font-weight: 600; }
+.status.ACTIVE, .status.AWAITING_ANSWER { background: var(--accent-soft); color: var(--accent); }
+.status.FULFILLED_INTERNAL { background: var(--ok-soft); color: var(--ok); }
+
+/* buyer brief */
+.brief-title { font-size: 18px; font-weight: 600; margin: 4px 0 2px; }
+.facts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 14px 0 4px; }
+.fact { background: #fafbfc; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.fact .k { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.fact .v { font-weight: 600; margin-top: 2px; }
+.reqs { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.reqs li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
+.tag { font-size: 11px; padding: 2px 8px; border-radius: 9px; white-space: nowrap; }
+.tag.must { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.tag.pref { background: #eef0f3; color: var(--muted); }
+.ruled { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.ruled li { padding: 8px 10px; border-radius: 8px; background: #fafbfc; border: 1px solid var(--line); }
+.ruled li .what { font-weight: 600; }
+.ruled li .why { color: var(--muted); }
+details.convo { margin-top: 14px; }
+details.convo summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+
+/* researched candidates */
+.cands { display: flex; flex-direction: column; gap: 8px; }
+.cand { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.cand.preferred { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.cand-head { display: flex; align-items: center; gap: 8px; }
+.cand-model { font-weight: 600; }
+.cand-config { color: var(--muted); margin: 2px 0 6px; }
+.cand-row { display: grid; grid-template-columns: 90px 1fr; gap: 8px; font-size: 13px; margin-top: 3px; }
+.cand-row .k { color: var(--muted); }
+
+/* my requests */
+.myreqs { display: flex; flex-direction: column; gap: 8px; }
+.myreq { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 13px; }
+.myreq .out { margin-top: 4px; }
+.myreq .out.bad { color: var(--err); }
+.myreq .out.warn { color: var(--warn); }
+.rstatus { font-size: 11px; padding: 2px 7px; border-radius: 9px; background: #eef0f3; color: var(--muted); margin-left: 6px; }
+.rstatus.ORDERED, .rstatus.APPROVED, .rstatus.CLOSED { background: var(--ok-soft); color: var(--ok); }
+.rstatus.REJECTED { background: var(--err-soft); color: var(--err); }
+.rstatus.BUYER_REVIEW { background: var(--warn-soft); color: var(--warn); }
+.confirm-list { display: flex; flex-direction: column; gap: 4px; }

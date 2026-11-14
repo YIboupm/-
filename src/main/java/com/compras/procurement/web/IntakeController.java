@@ -1,20 +1,19 @@
 package com.compras.procurement.web;
 
+import com.compras.procurement.intake.AgentIntakeService;
 import com.compras.procurement.intake.ConversationView;
-import com.compras.procurement.intake.IntakeService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
 /**
- * Web-chat channel adapter. An IM bot (Feishu, DingTalk, Teams) would be another adapter calling
- * the same {@link IntakeService} methods.
+ * Web-chat channel adapter for the intake agent. An IM bot would be another adapter calling the same
+ * {@link AgentIntakeService} methods.
  */
 @RestController
 @RequestMapping("/api/intake/conversations")
@@ -26,12 +25,15 @@ public class IntakeController {
     public record MessageRequest(String text) {
     }
 
-    public record AnswersRequest(List<IntakeService.Answer> answers) {
+    public record AnswersRequest(List<AgentIntakeService.Answer> answers) {
     }
 
-    private final IntakeService intake;
+    public record RejectRequest(String feedback) {
+    }
 
-    public IntakeController(IntakeService intake) {
+    private final AgentIntakeService intake;
+
+    public IntakeController(AgentIntakeService intake) {
         this.intake = intake;
     }
 
@@ -50,20 +52,23 @@ public class IntakeController {
         if (body.text() == null || body.text().isBlank()) {
             throw new IllegalStateException("Empty message.");
         }
-        return intake.handleMessage(id, body.text().trim());
+        return intake.message(id, body.text().trim());
     }
 
-    /** Answers to the multiple-choice questions. Picked options are stored without calling the model. */
     @PostMapping("/{id}/answers")
     public ConversationView answers(@PathVariable String id, @RequestBody AnswersRequest body) {
         return intake.answer(id, body.answers());
     }
 
-    /** mode=standard (default): the closest catalog option. mode=special: send to a buyer. */
-    @PostMapping("/{id}/confirm")
-    public ConversationView confirm(@PathVariable String id,
-                                    @RequestParam(defaultValue = "standard") String mode) {
-        return intake.confirm(id, "special".equalsIgnoreCase(mode));
+    /** The employee approves the agent's proposal: the only way anything gets submitted. */
+    @PostMapping("/{id}/proposal/confirm")
+    public ConversationView confirm(@PathVariable String id) {
+        return intake.confirmProposal(id);
+    }
+
+    @PostMapping("/{id}/proposal/reject")
+    public ConversationView reject(@PathVariable String id, @RequestBody RejectRequest body) {
+        return intake.rejectProposal(id, body.feedback());
     }
 
     @PostMapping("/{id}/cancel")

@@ -25,11 +25,56 @@ public class ModelGateway {
     private final LlmClient client;
     private final ObjectMapper objectMapper;
     private final AuditService audit;
+    private ToolCallingLlmClient toolClient;
 
     public ModelGateway(LlmClient client, ObjectMapper objectMapper, AuditService audit) {
         this.client = client;
         this.objectMapper = objectMapper;
         this.audit = audit;
+        this.toolClient = client instanceof ToolCallingLlmClient t ? t : null;
+    }
+
+    /** Lets tests (or another provider) plug in a tool-calling client. */
+    public void setToolClient(ToolCallingLlmClient toolClient) {
+        this.toolClient = toolClient;
+    }
+
+    /** One agent step with tools. Every call is audited with its latency, token usage and requested tools. */
+    public ChatResult chat(String purpose, String correlationId, List<AgentMessage> messages, List<ToolSpec> tools) {
+        if (toolClient == null) {
+            throw new LlmUnavailableException("The configured model client does not support tool calls.");
+        }
+        long start = System.currentTimeMillis();
+        try {
+            ChatResult result;
+            try {
+                result = toolClient.chat(messages, tools);
+            } catch (LlmUnavailableException first) {
+                if (first.getMessage() == null || !first.getMessage().contains("empty reply")) {
+                    throw first;
+                }
+                log.warn("Empty model reply for {}, retrying once", purpose);
+                result = toolClient.chat(messages, tools);
+            }
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("purpose", purpose);
+            payload.put("latencyMs", System.currentTimeMillis() - start);
+            payload.put("ok", true);
+            payload.put("response", result.content());
+            payload.put("toolCalls", result.toolCalls() == null ? List.of() : result.toolCalls().stream()
+                    .map(c -> Map.of("name", c.name(), "arguments", c.arguments())).toList());
+            payload.put("usage", result.usage() == null ? Map.of() : result.usage());
+            audit.record("ModelCall", correlationId, payload);
+            return result;
+        } catch (LlmUnavailableException e) {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("purpose", purpose);
+            payload.put("latencyMs", System.currentTimeMillis() - start);
+            payload.put("ok", false);
+            payload.put("error", e.getMessage());
+            audit.record("ModelCall", correlationId, payload);
+            throw e;
+        }
     }
 
     public <T> T call(String purpose, String correlationId, List<ChatMessage> messages, Class<T> type) {
@@ -37,7 +82,7 @@ public class ModelGateway {
         String raw = null;
         Map<String, Object> usage = null;
         try {
-            LlmResponse response = client.completeJson(messages);
+            LlmResponse response = completeWithEmptyReplyRetry(purpose, messages);
             raw = response.content();
             usage = response.usage();
             T parsed;
@@ -49,7 +94,7 @@ public class ModelGateway {
                 retry.add(ChatMessage.assistant(raw));
                 retry.add(ChatMessage.user("Your previous reply was not valid JSON (" + first.getOriginalMessage()
                         + "). Reply again with only the JSON object, no other text."));
-                response = client.completeJson(retry);
+                response = completeWithEmptyReplyRetry(purpose + " JSON repair", retry);
                 raw = response.content();
                 usage = response.usage();
                 parsed = parse(raw, type);
@@ -67,6 +112,19 @@ public class ModelGateway {
 
     private <T> T parse(String raw, Class<T> type) throws JsonProcessingException {
         return objectMapper.readValue(stripFences(raw), type);
+    }
+
+    /** One bounded retry for a provider response that contains a choice but no message content. */
+    private LlmResponse completeWithEmptyReplyRetry(String purpose, List<ChatMessage> messages) {
+        try {
+            return client.completeJson(messages);
+        } catch (LlmUnavailableException first) {
+            if (first.getMessage() == null || !first.getMessage().contains("empty reply")) {
+                throw first;
+            }
+            log.warn("Empty model reply for {}, retrying once", purpose);
+            return client.completeJson(messages);
+        }
     }
 
     /** Some models wrap JSON in ```json fences even when asked not to. */

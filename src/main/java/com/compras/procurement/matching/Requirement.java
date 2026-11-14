@@ -7,7 +7,7 @@ package com.compras.procurement.matching;
  *
  * @param description the condition in plain words, e.g. "Must run macOS"
  * @param attribute   a catalog attribute key (os, ramGb, gpuType ...) or null when no attribute covers it
- * @param operator    "eq", "min" or "max"
+ * @param operator    "eq", "neq", "min" or "max"
  * @param value       the value asked for, e.g. "macOS", 32, "dedicated"
  * @param strength    "must" or "preference"
  */

@@ -1,45 +1,43 @@
 package com.compras.procurement.intake;
 
-import com.compras.procurement.matching.Requirement;
+import com.compras.procurement.llm.AgentMessage;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
-/** One intake dialogue and the draft request it is building. */
+/**
+ * One intake conversation. It keeps two views of the same dialogue:
+ * {@code turns} is what the employee sees; {@code agentMessages} is what the model sees
+ * (including tool calls and tool results), replayed on every step like a coding agent's history.
+ */
 @Document("conversations")
 public class Conversation {
 
-    public enum Status { COLLECTING, AWAITING_CONFIRMATION, SUBMITTED, HANDED_OFF, CANCELLED }
+    public enum Status { ACTIVE, AWAITING_ANSWER, AWAITING_CONFIRMATION, SUBMITTED, FULFILLED_INTERNAL, CANCELLED }
 
-    /** Where a field value came from: said by the employee, inferred by the model, or known by the system. */
-    public enum Source { STATED, INFERRED, CONTEXT }
-
-    public record FieldValue(Object value, Source source) {
+    /** role: "user", "assistant" or "tool" (a one-line trace of a tool call, shown greyed out). */
+    public record Turn(String role, String text, Instant at) {
     }
 
-    public record Turn(String role, String text, Instant at) {
+    public record PlanItem(String step, String status) {
     }
 
     @Id
     private String id;
     private String employeeId;
-    private Status status = Status.COLLECTING;
-    private String categoryCode;
-    private Map<String, FieldValue> fields = new LinkedHashMap<>();
+    private Status status = Status.ACTIVE;
     private List<Turn> turns = new ArrayList<>();
-    private List<String> quickReplies = new ArrayList<>();
-    private List<String> fieldProblems = new ArrayList<>();
-    private List<Requirement> requirements = new ArrayList<>();
-    /** Open multiple-choice questions shown to the employee. */
-    private List<Question> pendingQuestions = new ArrayList<>();
-    private String rationale;
-    private int clarificationRounds;
-    private String handoffReason;
+    private List<AgentMessage> agentMessages = new ArrayList<>();
+    private List<PlanItem> plan = new ArrayList<>();
+    private String planExplanation;
+    /** The tool call that is waiting for the employee (ask_user or a proposal). */
+    private String pendingToolCallId;
+    private List<AgentQuestion> pendingQuestions = new ArrayList<>();
+    private Proposal proposal;
+    private List<WebSource> sources = new ArrayList<>();
     private String requestId;
     private Instant createdAt;
     private Instant updatedAt;
@@ -58,73 +56,81 @@ public class Conversation {
         updatedAt = at;
     }
 
-    /** Plain values (no provenance), as rules and resolvers expect them. */
-    public Map<String, Object> values() {
-        Map<String, Object> values = new LinkedHashMap<>();
-        fields.forEach((k, v) -> values.put(k, v.value()));
-        return values;
+    public void addAgentMessage(AgentMessage message) {
+        agentMessages.add(message);
     }
 
-    public Map<String, String> sources() {
-        Map<String, String> sources = new LinkedHashMap<>();
-        fields.forEach((k, v) -> sources.put(k, v.source().name()));
-        return sources;
+    public void waitForAnswers(String toolCallId, List<AgentQuestion> questions) {
+        this.pendingToolCallId = toolCallId;
+        this.pendingQuestions = new ArrayList<>(questions);
+        this.proposal = null;
+        this.status = Status.AWAITING_ANSWER;
     }
 
-    public void put(String field, Object value, Source source) {
-        fields.put(field, new FieldValue(value, source));
+    public void waitForConfirmation(String toolCallId, Proposal proposal) {
+        this.pendingToolCallId = toolCallId;
+        this.proposal = proposal;
+        this.pendingQuestions = new ArrayList<>();
+        this.status = Status.AWAITING_CONFIRMATION;
     }
 
-    public void startCategory(String code) {
-        this.categoryCode = code;
-        this.fields.clear();
-        this.requirements = new ArrayList<>();
-        this.rationale = null;
-        this.clarificationRounds = 0;
-    }
-
-    public int nextClarificationRound() {
-        return ++clarificationRounds;
-    }
-
-    public void handOff(String reason) {
-        this.status = Status.HANDED_OFF;
-        this.handoffReason = reason;
-    }
-
-    public void submitted(String requestId) {
-        this.status = Status.SUBMITTED;
-        this.requestId = requestId;
+    /** Clears what the employee was asked; returns the tool call id that must now receive a result. */
+    public String resolvePending() {
+        String id = pendingToolCallId;
+        pendingToolCallId = null;
+        pendingQuestions = new ArrayList<>();
+        proposal = null;
+        status = Status.ACTIVE;
+        return id;
     }
 
     public boolean isOpen() {
-        return status == Status.COLLECTING || status == Status.AWAITING_CONFIRMATION;
+        return status == Status.ACTIVE || status == Status.AWAITING_ANSWER || status == Status.AWAITING_CONFIRMATION;
+    }
+
+    /** Everything the employee typed, verbatim. */
+    public String originalWords() {
+        return String.join("\n", turns.stream().filter(t -> "user".equals(t.role())).map(Turn::text).toList());
+    }
+
+    public void setPlan(List<PlanItem> plan, String explanation) {
+        this.plan = new ArrayList<>(plan);
+        this.planExplanation = explanation;
+    }
+
+    public void finish(Status status, String requestId) {
+        this.status = status;
+        this.requestId = requestId;
+        this.pendingToolCallId = null;
+        this.pendingQuestions = new ArrayList<>();
     }
 
     public String getId() { return id; }
     public String getEmployeeId() { return employeeId; }
     public Status getStatus() { return status; }
     public void setStatus(Status status) { this.status = status; }
-    public String getCategoryCode() { return categoryCode; }
-    public Map<String, FieldValue> getFields() { return fields; }
     public List<Turn> getTurns() { return turns; }
-    public List<String> getQuickReplies() { return quickReplies; }
-    public void setQuickReplies(List<String> quickReplies) { this.quickReplies = quickReplies == null ? new ArrayList<>() : new ArrayList<>(quickReplies); }
-    public List<String> getFieldProblems() { return fieldProblems; }
-    public void setFieldProblems(List<String> problems) { this.fieldProblems = new ArrayList<>(problems); }
-    public List<Requirement> getRequirements() { return requirements == null ? List.of() : requirements; }
-    public void setRequirements(List<Requirement> list) { this.requirements = list == null ? new ArrayList<>() : new ArrayList<>(list); }
+    public List<AgentMessage> getAgentMessages() { return agentMessages; }
+    public List<PlanItem> getPlan() { return plan == null ? List.of() : plan; }
+    public String getPlanExplanation() { return planExplanation; }
+    public String getPendingToolCallId() { return pendingToolCallId; }
+    public List<AgentQuestion> getPendingQuestions() { return pendingQuestions == null ? List.of() : pendingQuestions; }
+    public Proposal getProposal() { return proposal; }
+    public List<WebSource> getSources() { return sources == null ? List.of() : sources; }
 
-    /** Everything the employee typed, verbatim, in order. Stored with the request so nothing is lost to a summary. */
-    public String originalWords() {
-        return String.join("\n", turns.stream().filter(t -> "user".equals(t.role())).map(Turn::text).toList());
+    public void addSource(String url, String title, String via, Instant at) {
+        if (sources == null) {
+            sources = new ArrayList<>();
+        }
+        if (url != null && !url.isBlank() && !hasSource(url)) {
+            sources.add(new WebSource(url, title, via, at));
+        }
     }
-    public List<Question> getPendingQuestions() { return pendingQuestions == null ? List.of() : pendingQuestions; }
-    public void setPendingQuestions(List<Question> qs) { this.pendingQuestions = qs == null ? new ArrayList<>() : new ArrayList<>(qs); }
-    public String getRationale() { return rationale; }
-    public void setRationale(String rationale) { this.rationale = rationale; }
-    public int getClarificationRounds() { return clarificationRounds; }
-    public String getHandoffReason() { return handoffReason; }
+
+    public boolean hasSource(String url) {
+        String key = WebSource.normalize(url);
+        return getSources().stream().anyMatch(s -> WebSource.normalize(s.url()).equals(key));
+    }
     public String getRequestId() { return requestId; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }

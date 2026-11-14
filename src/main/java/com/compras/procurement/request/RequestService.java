@@ -72,6 +72,7 @@ public class RequestService {
                 input.warnings(),
                 input.specialRequirements(),
                 now);
+        request.describe(input.title(), input.requirements(), input.alternativesConsidered(), input.suggestedModels());
         request = repository.save(request);
         events.publishEvent(new Events.RequestSubmitted(request.getId(), request.getNumber(), request.isNonStandard(), now));
         return request;
@@ -89,20 +90,55 @@ public class RequestService {
     }
 
     /** A buyer sourced a special request: record what will be bought and approve it. */
-    public PurchaseRequest buyerApprove(String requestId, String description, String supplierName, int quantity,
-                                        BigDecimal unitPrice, String note) {
-        if (description == null || description.isBlank() || supplierName == null || supplierName.isBlank()
-                || quantity < 1 || unitPrice == null || unitPrice.signum() <= 0) {
+    public PurchaseRequest buyerApprove(String requestId, BuyerApproval a) {
+        String description = a.description() == null ? "" : a.description().trim();
+        String supplierName = a.supplierName() == null ? "" : a.supplierName().trim();
+        if (description.isEmpty() || supplierName.isEmpty() || a.quantity() < 1 || a.unitPrice() == null
+                || a.unitPrice().signum() <= 0) {
             throw new IllegalStateException("Item, supplier, quantity and a positive unit price are required.");
         }
         PurchaseRequest request = get(requestId);
         if (request.getStatus() != RequestStatus.BUYER_REVIEW) {
             throw new IllegalStateException("Request " + request.getNumber() + " is not waiting for a buyer.");
         }
+        // The bought item must meet every must-have the employee stated; the buyer confirms each one.
+        java.util.Map<String, Boolean> answers = new java.util.HashMap<>();
+        if (a.confirmations() != null) {
+            a.confirmations().forEach(c -> answers.put(c.requirement(), c.met()));
+        }
+        List<String> problems = new java.util.ArrayList<>();
+        List<BuyerApproval.Confirmation> confirmations = new java.util.ArrayList<>();
+        for (var r : request.getRequirements()) {
+            Boolean met = answers.get(r.description());
+            if (r.isMust() && met == null) {
+                problems.add("Confirm whether the item meets: " + r.description());
+            } else if (r.isMust() && !met) {
+                problems.add("The item does not meet the must-have \"" + r.description()
+                        + "\": source another item, or reject the request with the reason.");
+            }
+            if (met != null) {
+                confirmations.add(new BuyerApproval.Confirmation(r.description(), met));
+            }
+        }
+        // Buying something other than what the employee chose needs a reason the employee will see.
+        String chosen = request.chosenModelLabel();
+        boolean substituted = chosen != null && !description.equalsIgnoreCase(chosen.trim());
+        String reason = a.substitutionReason() == null ? null : a.substitutionReason().trim();
+        if (substituted && (reason == null || reason.isEmpty())) {
+            problems.add("You are buying something other than the employee's choice (" + chosen
+                    + "). Say why, e.g. \"model discontinued\".");
+        }
+        if (!problems.isEmpty()) {
+            throw new IllegalStateException(String.join(" ", problems));
+        }
         Instant now = Instant.now(clock);
-        request.recordSourcing(new PurchaseRequest.SourcedItem(description.trim(), supplierName.trim(), quantity,
-                unitPrice, Money.times(unitPrice, quantity), note, now));
-        String approvalNote = "Approved by buyer: " + description.trim() + " from " + supplierName.trim();
+        int quantity = a.quantity();
+        BigDecimal unitPrice = a.unitPrice();
+        request.recordSourcing(new PurchaseRequest.SourcedItem(description, supplierName, quantity,
+                unitPrice, Money.times(unitPrice, quantity), a.note(), now, chosen, substituted,
+                substituted ? reason : null, confirmations));
+        String approvalNote = "Approved by buyer: " + description + " from " + supplierName
+                + (substituted ? " (instead of " + chosen + ": " + reason + ")" : "");
         request.moveTo(RequestStatus.APPROVED, now, approvalNote);
         request = repository.save(request);
         events.publishEvent(new Events.RequestApproved(request.getId(), false, approvalNote, now));
@@ -116,7 +152,19 @@ public class RequestService {
         PurchaseRequest request = get(requestId);
         request.recordRejection(reason.trim());
         request.moveTo(RequestStatus.REJECTED, Instant.now(clock), "Rejected: " + reason.trim());
-        return repository.save(request);
+        request = repository.save(request);
+        events.publishEvent(new Events.RequestRejected(request.getId(), request.getNumber(), reason.trim(),
+                Instant.now(clock)));
+        return request;
+    }
+
+    /** One employee's requests, newest first: what they asked for and what happened. */
+    public List<PurchaseRequest> of(String employeeId) {
+        return repository.findAll().stream()
+                .filter(r -> r.getRequester() != null && employeeId.equals(r.getRequester().employeeId()))
+                .sorted(java.util.Comparator.comparing(PurchaseRequest::getSubmittedAt,
+                        java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())))
+                .toList();
     }
 
     public List<PurchaseRequest> waitingForBuyer() {

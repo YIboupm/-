@@ -11,6 +11,7 @@
   <div class="brand">Procurement<span>Hub</span></div>
   <nav>
     <a href="index.html" class="active">New request</a>
+    <a href="my-requests.html">My requests</a>
     <a href="pool.html">Pool &amp; orders</a>
     <a href="buyer.html">Buyer desk</a>
     <a href="audit.html">Audit log</a>
@@ -20,10 +21,9 @@
 
 <main class="intake">
   <section class="panel chat">
-    <h2>Assistant</h2>
+    <h2>Procurement agent <span class="status" id="status"></span></h2>
     <div class="messages" id="messages"></div>
     <div class="questions" id="questions"></div>
-    <div class="chips" id="chips"></div>
     <form class="composer" id="composer">
       <input type="text" id="input" placeholder="Describe what you need, in your own words…" autocomplete="off">
       <button class="primary" id="send" type="submit">Send</button>
@@ -31,288 +31,226 @@
   </section>
 
   <section class="panel draft">
-    <h2>Structured request <span class="status" id="status"></span></h2>
-    <div class="body" id="draft">
-      <div class="placeholder">As you chat, the assistant fills in a standard request here.<br>
-        Green = you said it · Amber = inferred by AI · Grey = taken from your profile.</div>
+    <h2>Plan &amp; proposal</h2>
+    <div class="body" id="side">
+      <div class="placeholder">The agent plans its own steps: it checks what the company already has, then the
+        catalog, asks you what it needs, and finally proposes something for you to confirm.<br>
+        Nothing is submitted until you press Confirm.</div>
     </div>
   </section>
 </main>
 
 <script src="common.js"></script>
 <script>
-  const state = { conversationId: null, busy: false, employees: [] };
+  const state = { id: null, busy: false, questions: [] };
   const $ = id => document.getElementById(id);
+  const PLAN_ICON = { completed: '✓', in_progress: '▸', pending: '○' };
+  const CHECK_LABEL = { MET: 'Met', NOT_MET: 'Not met', UNKNOWN: 'Not described' };
+  const TYPE_LABEL = { STANDARD: 'Standard purchase', SPECIAL: 'Special request for a buyer', INTERNAL_USE: 'Use an existing company resource' };
 
   async function init() {
-    state.employees = await api('GET', '/api/employees');
-    $('employee').innerHTML = state.employees
+    const employees = await api('GET', '/api/employees');
+    $('employee').innerHTML = employees
       .map(e => `<option value="${esc(e.id)}">${esc(e.name)} · ${esc(e.jobRole)}, ${esc(e.site)}</option>`).join('');
-    $('employee').addEventListener('change', newConversation);
+    $('employee').addEventListener('change', start);
     $('composer').addEventListener('submit', e => { e.preventDefault(); send($('input').value); });
-    await newConversation();
+    await start();
   }
 
-  async function newConversation() {
-    try {
-      render(await api('POST', '/api/intake/conversations', { employeeId: $('employee').value }));
-      $('input').focus();
-    } catch (e) { showError(e); }
+  async function start() {
+    try { render(await api('POST', '/api/intake/conversations', { employeeId: $('employee').value })); }
+    catch (e) { bubble('error', '⚠ ' + e.message); }
   }
 
-  async function send(text) {
-    text = text.trim();
-    if (!text || state.busy || !state.conversationId) return;
-    $('input').value = '';
+  async function call(path, body, pendingText) {
+    if (state.busy) return;
     setBusy(true);
-    appendBubble('user', text);
-    const typing = appendBubble('assistant typing', 'Thinking…');
-    try {
-      render(await api('POST', `/api/intake/conversations/${state.conversationId}/messages`, { text }));
-    } catch (e) {
-      typing.remove();
-      showError(e);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function confirmRequest(mode) {
-    if (mode === 'special' && !confirm('Send this to a buyer as a special (non-standard) request? A buyer will source and price it individually; it does not go through automatic approval.')) return;
-    setBusy(true);
-    try { render(await api('POST', `/api/intake/conversations/${state.conversationId}/confirm?mode=${mode}`)); }
-    catch (e) { showError(e); }
+    const typing = bubble('assistant typing', pendingText || 'Working…');
+    try { render(await api('POST', `/api/intake/conversations/${state.id}${path}`, body)); }
+    catch (e) { typing.remove(); bubble('error', '⚠ ' + e.message); }
     finally { setBusy(false); }
   }
 
-  function setBusy(busy) {
-    state.busy = busy;
-    $('send').disabled = busy;
-    document.querySelectorAll('#chips button, #draft button, #questions button').forEach(b => b.disabled = busy);
+  function send(text) {
+    text = text.trim();
+    if (!text) return;
+    $('input').value = '';
+    bubble('user', text);
+    call('/messages', { text }, 'Planning and checking…');
   }
 
-  function appendBubble(cls, text) {
-    const div = document.createElement('div');
-    div.className = 'msg ' + cls;
-    div.textContent = text;
-    $('messages').appendChild(div);
+  function setBusy(b) {
+    state.busy = b;
+    document.querySelectorAll('#send, #questions button, #side button').forEach(x => x.disabled = b);
+  }
+
+  function bubble(cls, text) {
+    const d = document.createElement('div');
+    d.className = 'msg ' + cls;
+    d.textContent = text;
+    $('messages').appendChild(d);
     $('messages').scrollTop = $('messages').scrollHeight;
-    return div;
-  }
-
-  function showError(e) {
-    appendBubble('error', '⚠ ' + e.message);
+    return d;
   }
 
   // ------------------------------------------------------------ render
 
   function render(v) {
-    state.conversationId = v.id;
+    state.id = v.id;
     $('messages').innerHTML = '';
-    v.turns.forEach(t => appendBubble(t.role, t.text));
-
-    const open = v.status === 'COLLECTING' || v.status === 'AWAITING_CONFIRMATION';
-    $('chips').innerHTML = open ? (v.quickReplies || [])
-      .map(q => `<button class="chip" type="button">${esc(q)}</button>`).join('') : '';
-    $('chips').querySelectorAll('button').forEach(b => b.addEventListener('click', () => send(b.textContent)));
+    v.turns.forEach(t => bubble(t.role === 'tool' ? 'trace' : t.role, t.role === 'tool' ? '⚙ ' + t.text : t.text));
+    const open = ['ACTIVE', 'AWAITING_ANSWER', 'AWAITING_CONFIRMATION'].includes(v.status);
     $('input').disabled = !open;
     $('send').disabled = !open;
-    renderQuestions(open ? (v.questions || []) : []);
-
     $('status').textContent = v.status.replaceAll('_', ' ');
     $('status').className = 'status ' + v.status;
-    renderDraft(v, open);
+    renderQuestions(v.status === 'AWAITING_ANSWER' ? v.questions : []);
+    renderSide(v, open);
   }
-
-  // ------------------------------------------------------------ multiple-choice questions
 
   function renderQuestions(questions) {
     state.questions = questions;
-    const box = $('questions');
-    if (!questions.length) { box.innerHTML = ''; return; }
-    const fields = questions.filter(q => q.field !== '_decision');
-    const decision = questions.find(q => q.field === '_decision');
-    let html = fields.map((q, qi) => `<div class="qcard">
-        <div class="qtitle">${esc(q.text)}</div>
-        ${q.options.map((o, oi) => `<label class="opt"><input type="radio" name="q${qi}" value="${oi}"> ${esc(o.label)}</label>`).join('')}
-        ${q.allowOther ? `<label class="opt other"><input type="radio" name="q${qi}" value="other"> Other:
-            <input type="text" class="other-text" data-q="${qi}" placeholder="type your answer"></label>` : ''}
-      </div>`).join('');
-    if (fields.length) html += '<div class="qactions"><button class="primary" id="sendAnswers" type="button">Send answers</button></div>';
-    if (decision) {
-      html += `<div class="qcard decision"><div class="qtitle">${esc(decision.text)}</div><div class="qactions">
-        ${decision.options.map((o, oi) => `<button type="button" class="${oi === 0 ? 'primary' : ''}" data-d="${oi}">${esc(o.label)}</button>`).join('')}
-        </div></div>`;
-    }
-    box.innerHTML = html;
-    box.querySelectorAll('.other-text').forEach(t => t.addEventListener('focus', () => {
-      box.querySelector(`input[name="q${t.dataset.q}"][value="other"]`).checked = true;
+    if (!questions.length) { $('questions').innerHTML = ''; return; }
+    $('questions').innerHTML = questions.map((q, qi) => `<div class="qcard">
+        <div class="qtitle">${esc(q.question)}</div>
+        ${q.options.map((o, oi) => `<label class="opt"><input type="radio" name="q${qi}" value="${oi}">
+          <span>${esc(o.label)}${o.description ? `<span class="muted small"> — ${esc(o.description)}</span>` : ''}</span></label>`).join('')}
+        <label class="opt other"><input type="radio" name="q${qi}" value="other"> ${esc(q.otherLabel || 'Other')}:
+          <input type="text" class="other-text" data-q="${qi}" placeholder="…"></label>
+      </div>`).join('') + '<div class="qactions"><button class="primary" id="sendAnswers" type="button">Send answers</button></div>';
+    $('questions').querySelectorAll('.other-text').forEach(t => t.addEventListener('focus', () => {
+      document.querySelector(`input[name="q${t.dataset.q}"][value="other"]`).checked = true;
     }));
-    const s = document.getElementById('sendAnswers');
-    if (s) s.addEventListener('click', () => sendAnswers(fields));
-    box.querySelectorAll('[data-d]').forEach(b => b.addEventListener('click', () => {
-      const o = decision.options[+b.dataset.d];
-      postAnswers([{ field: '_decision', value: o.value, label: o.label }]);
-    }));
+    $('sendAnswers').onclick = sendAnswers;
   }
 
-  function sendAnswers(fields) {
+  function sendAnswers() {
     const answers = [];
-    fields.forEach((q, qi) => {
+    state.questions.forEach((q, qi) => {
       const picked = document.querySelector(`input[name="q${qi}"]:checked`);
       if (!picked) return;
       if (picked.value === 'other') {
         const text = document.querySelector(`.other-text[data-q="${qi}"]`).value.trim();
-        if (text) answers.push({ field: q.field, text });
+        if (text) answers.push({ questionId: q.id, text });
       } else {
         const o = q.options[+picked.value];
-        answers.push({ field: q.field, value: o.value, label: o.label });
+        answers.push({ questionId: q.id, label: o.label, value: o.value });
       }
     });
     if (!answers.length) { toast('Pick an option or type an answer first'); return; }
-    postAnswers(answers);
+    bubble('user', answers.map(a => a.label || a.text).join(' · '));
+    call('/answers', { answers }, 'Thinking about your answers…');
   }
 
-  async function postAnswers(answers) {
-    if (state.busy) return;
-    setBusy(true);
-    const typing = appendBubble('assistant typing', 'Updating your request…');
-    try {
-      render(await api('POST', `/api/intake/conversations/${state.conversationId}/answers`, { answers }));
-    } catch (e) {
-      typing.remove();
-      showError(e);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function renderDraft(v, open) {
-    if (!v.categoryCode) {
-      let html = '<div class="placeholder">As you chat, the assistant fills in a standard request here.<br>'
-        + 'Green = you said it · Amber = inferred by AI · Grey = taken from your profile.</div>';
-      if (v.status === 'HANDED_OFF') html = handoffBanner(v) + html;
-      $('draft').innerHTML = html + newButton();
-      bindButtons();
-      return;
-    }
+  function renderSide(v, open) {
     let html = '';
-    if (v.requestNumber && v.requestStatus === 'BUYER_REVIEW') {
-      html += `<div class="banner special">Special request <b>${esc(v.requestNumber)}</b> is with a buyer
-               (status <b>BUYER REVIEW</b>). It is sourced individually, outside the automatic pool.
-               <a href="buyer.html">Open the buyer desk →</a></div>`;
-    } else if (v.requestNumber) {
-      html += `<div class="banner">Submitted as <b>${esc(v.requestNumber)}</b> · status <b>${esc(v.requestStatus)}</b>.
-               <a href="pool.html">See it in the pool →</a></div>`;
+    if (v.requestNumber) {
+      html += `<div class="banner ${v.requestStatus === 'BUYER_REVIEW' ? 'special' : ''}">Request <b>${esc(v.requestNumber)}</b>
+        · status <b>${esc(v.requestStatus.replaceAll('_', ' '))}</b>.
+        <a href="${v.requestStatus === 'BUYER_REVIEW' ? 'buyer.html' : 'pool.html'}">Open →</a></div>`;
     }
-    if (v.status === 'HANDED_OFF') html += handoffBanner(v);
-
-    html += `<div><b>${esc(v.categoryName)}</b> <span class="muted small">(${esc(v.categoryCode)})</span></div>`;
-
-    html += '<div class="section-title">Fields</div><table><tbody>';
-    v.fields.forEach(f => {
-      const missing = f.required && (f.value === null || f.value === undefined);
-      html += `<tr class="${missing ? 'required-missing' : ''}">
-        <td style="width:34%">${esc(f.label)}</td>
-        <td>${f.value === null || f.value === undefined
-          ? `<span class="empty-value">${f.required ? 'needed' : 'optional'}</span>` : esc(display(f.value))}
-          ${f.name === 'chargeTo' && v.chargeToCostCenter ? `<span class="muted small"> · ${esc(v.chargeToCostCenter)}</span>` : ''}</td>
-        <td style="width:1%">${f.source ? `<span class="src ${f.source}">${SOURCE_LABEL[f.source]}</span>` : ''}</td>
-      </tr>`;
-    });
-    html += '</tbody></table>';
-
-    if (v.lines && v.lines.length) {
-      html += '<div class="section-title">Mapped to catalog</div><table><thead><tr>'
-        + '<th>Item</th><th class="num">Qty</th><th class="num">Unit</th><th class="num">Total</th></tr></thead><tbody>';
-      v.lines.forEach(l => {
-        const specs = l.specs ? Object.entries(l.specs).map(([k, s]) => `<span class="spec">${esc(k)}: ${esc(s)}</span>`).join('') : '';
-        html += `<tr><td>${esc(l.name)}<div class="muted small">${esc(l.sku)} · ${esc(l.supplierName)}
-                 ${l.note ? ' · ' + esc(l.note) : ''}</div><div class="specs">${specs}</div></td>
-                 <td class="num">${l.quantity}</td><td class="num">${money(l.unitPrice, v.currency)}</td>
-                 <td class="num">${money(l.lineTotal, v.currency)}</td></tr>`;
-      });
-      html += `</tbody></table><div class="total"><span>Estimated total</span><span>${money(v.estimatedTotal, v.currency)}</span></div>`;
-      if (v.rationale) html += `<div class="why"><b>Why this option:</b> ${esc(v.rationale)}</div>`;
+    if (v.status === 'FULFILLED_INTERNAL') {
+      html += '<div class="banner">Fulfilled with an existing company resource. No purchase was made.</div>';
     }
-
-    if (v.checks && v.checks.length) {
-      html += '<div class="section-title">Your requirements vs. the catalog</div><table><tbody>';
-      v.checks.forEach(k => {
-        const label = { MET: 'Met', NOT_MET: 'Not met', UNKNOWN: 'Not in catalog' }[k.status];
-        html += `<tr><td>${esc(k.requirement.description)}
-                 <div class="muted small">${k.requirement.strength === 'preference' ? 'Preference' : 'Must have'}</div></td>
-                 <td class="muted">${k.actual ? 'Catalog: ' + esc(k.actual) : 'Catalog does not specify this'}</td>
-                 <td style="width:1%"><span class="check ${k.status}">${label}</span></td></tr>`;
-      });
-      html += '</tbody></table><div class="muted small" style="margin-top:6px">Checked by the system against catalog data, not by the AI.</div>';
+    if (v.plan && v.plan.length) {
+      html += '<div class="section-title">Agent plan</div><ul class="plan">'
+        + v.plan.map(p => `<li class="${p.status}"><span>${PLAN_ICON[p.status] || '○'}</span> ${esc(p.step)}</li>`).join('')
+        + '</ul>' + (v.planExplanation ? `<div class="muted small">${esc(v.planExplanation)}</div>` : '');
     }
-
-    if (v.specialRequirements && v.specialRequirements.length) {
-      html += `<div class="section-title">Must-haves the standard item does not meet</div><div class="special-box">
-        <ul>${v.specialRequirements.map(r => `<li>${esc(r)}</li>`).join('')}</ul>
-        <div class="small">Either go ahead with the standard item above (automatic approval and pooling),
-        or send a special request: a buyer sources and prices it individually.</div></div>`;
+    if (v.proposal) html += proposalCard(v.proposal, v.status === 'AWAITING_CONFIRMATION');
+    if (!html) {
+      html = `<div class="placeholder">The agent plans its own steps: it checks what the company already has, then the
+        catalog, asks you what it needs, and finally proposes something for you to confirm.<br>
+        Nothing is submitted until you press Confirm.</div>`;
     }
-
-    if (v.issues && v.issues.length) {
-      html += '<div class="section-title">Checks</div><ul class="issues">'
-        + v.issues.map(i => `<li class="${i.severity}">${esc(i.message)}</li>`).join('') + '</ul>';
-    }
-
-    const special = v.specialRequirements && v.specialRequirements.length > 0;
-    html += '<div class="actions">';
-    if (v.status === 'AWAITING_CONFIRMATION') {
-      html += `<button class="primary" id="confirm">${special ? 'Use the standard option' : 'Confirm and submit'}</button>`;
-    }
-    if (open) html += `<button id="special">${special ? 'Send to a buyer as special request' : 'Need something non-standard?'}</button>`;
-    html += `<button id="restart">${open ? 'Start over' : 'New request'}</button></div>`;
-
-    html += `<details><summary>Standardised record (JSON)</summary><pre class="json">${esc(JSON.stringify(record(v), null, 2))}</pre></details>`;
-    $('draft').innerHTML = html;
-    bindButtons();
-  }
-
-  function handoffBanner(v) {
-    return `<div class="banner handoff">Passed to a buyer: ${esc(v.handoffReason)}</div>`;
-  }
-
-  function newButton() {
-    return '<div class="actions"><button id="restart">New request</button></div>';
-  }
-
-  function bindButtons() {
-    const c = document.getElementById('confirm');
-    if (c) c.addEventListener('click', () => confirmRequest('standard'));
-    const s = document.getElementById('special');
-    if (s) s.addEventListener('click', () => confirmRequest('special'));
-    const r = document.getElementById('restart');
-    if (r) r.addEventListener('click', newConversation);
-  }
-
-  function display(value) {
-    if (value === true) return 'Yes';
-    if (value === false) return 'No';
-    return value;
-  }
-
-  /** The machine-readable shape that is stored: fields + lines, no chat text. */
-  function record(v) {
-    const fields = {};
-    v.fields.forEach(f => { if (f.value !== null && f.value !== undefined) fields[f.name] = f.value; });
-    return {
-      category: v.categoryCode,
-      requester: v.employeeId,
-      fields,
-      lines: (v.lines || []).map(l => ({ sku: l.sku, quantity: l.quantity, unitPrice: l.unitPrice, supplierId: l.supplierId, specs: l.specs })),
-      specialRequirements: v.specialRequirements,
-      estimatedTotal: v.estimatedTotal,
-      currency: v.currency,
-      missing: v.missingFields,
+    html += `<div class="actions"><button id="restart">${open ? 'Start over' : 'New request'}</button></div>`;
+    html += '<div id="myRequests"></div>';
+    $('side').innerHTML = html;
+    loadMyRequests();
+    $('restart').onclick = start;
+    const c = $('confirmProposal');
+    if (c) c.onclick = () => call('/proposal/confirm', null, 'Submitting…');
+    const r = $('rejectProposal');
+    if (r) r.onclick = () => {
+      const feedback = $('feedback').value.trim();
+      if (!feedback) { toast('Tell the agent what to change'); return; }
+      bubble('user', 'Not confirmed: ' + feedback);
+      call('/proposal/reject', { feedback }, 'Revising…');
     };
   }
 
-  init().catch(showError);
+  function proposalCard(p, pending) {
+    let h = `<div class="section-title">Proposal</div><div class="proposal ${p.type}">
+      <div class="ptype">${TYPE_LABEL[p.type]}</div><div class="ptitle">${esc(p.title)}</div>
+      ${p.summary ? `<div>${esc(p.summary)}</div>` : ''}`;
+    if (p.resource) {
+      const r = p.resource;
+      h += `<div class="muted small">${esc(r.type)} · ${esc(r.location)} · ${esc(r.access)} · custodian ${esc(r.custodian)}
+            ${r.live ? ` · live ${esc(r.status)} at ${esc(new Date(r.observedAt).toLocaleTimeString('en-GB'))}` : ''}</div>
+            <div class="specs">${Object.entries(r.attributes || {}).map(([k, x]) => `<span class="spec">${esc(k)}: ${esc(x)}</span>`).join('')}</div>`;
+      if (p.avoidedSpend) h += `<div class="why"><b>Avoided spend:</b> ${money(p.avoidedSpend, p.currency)}</div>`;
+    }
+    if (p.fields && Object.keys(p.fields).length) {
+      h += '<table><tbody>' + Object.entries(p.fields).map(([k, x]) =>
+        `<tr><td style="width:34%" class="muted">${esc(k)}</td><td>${esc(x === true ? 'Yes' : x === false ? 'No' : x)}</td></tr>`).join('') + '</tbody></table>';
+    }
+    if (p.lines && p.lines.length) {
+      h += '<table><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Unit</th><th class="num">Total</th></tr></thead><tbody>'
+        + p.lines.map(l => `<tr><td>${esc(l.name)}<div class="muted small">${esc(l.sku)} · ${esc(l.supplierName)}${l.note ? ' · ' + esc(l.note) : ''}</div>
+            <div class="specs">${Object.entries(l.specs || {}).map(([k, x]) => `<span class="spec">${esc(k)}: ${esc(x)}</span>`).join('')}</div></td>
+            <td class="num">${l.quantity}</td><td class="num">${money(l.unitPrice, p.currency)}</td><td class="num">${money(l.lineTotal, p.currency)}</td></tr>`).join('')
+        + '</tbody></table>';
+      if (p.estimatedTotal) h += `<div class="total"><span>${p.type === 'SPECIAL' ? 'Reference estimate' : 'Estimated total'}</span><span>${money(p.estimatedTotal, p.currency)}</span></div>`;
+    }
+    if (p.rationale) h += `<div class="why"><b>Why this option:</b> ${esc(p.rationale)}</div>`;
+    if (p.specialReasons && p.specialReasons.length) {
+      h += '<div class="section-title">Why the standard options do not fit</div><ul class="issues">'
+        + p.specialReasons.map(s => `<li class="WARNING">${esc(s)}</li>`).join('') + '</ul>';
+    }
+    if (p.candidates && p.candidates.length) {
+      h += '<div class="section-title">Suggested models (from public sources)</div>' + candidatesHtml(p.candidates)
+        + '<div class="muted small" style="margin-top:4px">Prices are list prices from the cited pages; the buyer confirms the final price.</div>';
+    }
+    if (p.considered && p.considered.length) {
+      h += '<div class="section-title">Also considered, not used</div><ul class="issues">'
+        + p.considered.map(a => `<li class="WARNING"><b>${esc(a.name)}</b> (${esc(a.id)}): ${esc(a.whyNot)}</li>`).join('') + '</ul>';
+    }
+    if (p.type === 'SPECIAL' && (!p.checks || !p.checks.length) && p.requirements && p.requirements.length) {
+      h += '<div class="section-title">Requirements for the buyer to source</div><table><tbody>'
+        + p.requirements.map(r => `<tr><td>${esc(r.description)}<div class="muted small">${r.strength === 'preference' ? 'Preference' : 'Must have'}</div></td>
+            <td style="width:1%"><span class="check UNKNOWN">To be sourced</span></td></tr>`).join('')
+        + '</tbody></table>';
+    }
+    if (p.checks && p.checks.length) {
+      h += '<div class="section-title">Your requirements, checked by the system</div><table><tbody>'
+        + p.checks.map(k => `<tr><td>${esc(k.requirement.description)}<div class="muted small">${k.requirement.strength === 'preference' ? 'Preference' : 'Must have'}</div></td>
+            <td class="muted">${k.actual ? 'Actual: ' + esc(k.actual) : 'Not described in the data'}</td>
+            <td style="width:1%"><span class="check ${k.status}">${CHECK_LABEL[k.status]}</span></td></tr>`).join('')
+        + '</tbody></table>';
+    }
+    if (p.warnings && p.warnings.length) {
+      h += '<ul class="issues">' + p.warnings.map(w => `<li class="WARNING">${esc(w.message)}</li>`).join('') + '</ul>';
+    }
+    if (pending) {
+      h += `<div class="actions"><button class="primary" id="confirmProposal">Confirm</button></div>
+        <div class="form-row" style="grid-template-columns: 1fr auto"><input type="text" id="feedback" placeholder="Or tell the agent what to change…">
+        <button id="rejectProposal">Not like this</button></div>`;
+    }
+    return h + '</div>';
+  }
+
+  /** The employee's own requests and what the buyer decided (also on my-requests.html). */
+  async function loadMyRequests() {
+    const box = $('myRequests');
+    if (!box) return;
+    try {
+      const list = await api('GET', '/api/requests?employeeId=' + encodeURIComponent($('employee').value));
+      box.innerHTML = list.length ? '<div class="section-title">My requests · <a href="my-requests.html?employee='
+        + encodeURIComponent($('employee').value) + '">open all</a></div>' + myRequestsHtml(list.slice(0, 3)) : '';
+    } catch (e) { box.innerHTML = `<div class="muted small">My requests could not be loaded: ${esc(e.message)}</div>`; }
+  }
+
+  init().catch(e => bubble('error', '⚠ ' + e.message));
 </script>
 </body>
 </html>

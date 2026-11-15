@@ -17,6 +17,8 @@ import com.compras.procurement.intake.agent.ToolResult;
 import com.compras.procurement.matching.Requirement;
 import com.compras.procurement.rules.RuleViolation;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.compras.procurement.budget.BudgetGate;
+import com.compras.procurement.budget.BudgetVerdict;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -39,9 +41,13 @@ public class ProposeStandardRequestTool implements AgentTool {
     private final DraftEvaluator evaluator;
     private final IntakeProperties properties;
     private final com.compras.procurement.intake.agent.ReuseGuard reuse;
+    /** Finance boundary: a yes/no verdict for this request's amount, never a figure. */
+    private final BudgetGate budget;
 
     public ProposeStandardRequestTool(CatalogService catalog, FieldNormalizer normalizer, DraftEvaluator evaluator,
-                                      IntakeProperties properties, com.compras.procurement.intake.agent.ReuseGuard reuse) {
+                                      IntakeProperties properties, com.compras.procurement.intake.agent.ReuseGuard reuse,
+                                      BudgetGate budget) {
+        this.budget = budget;
         this.reuse = reuse;
         this.catalog = catalog;
         this.normalizer = normalizer;
@@ -71,6 +77,8 @@ public class ProposeStandardRequestTool implements AgentTool {
                 "requirements", Schemas.requirements(),
                 "summary", Schemas.string("One sentence for the employee: what will be ordered and why."),
                 "rationale", Schemas.string("Why this catalog option fits the need."),
+                "over_budget_explained", Schemas.anyValue("Set true only after the system said OVER_BUDGET and you "
+                        + "told the employee."),
                 "considered", Schemas.considered()),
                 "category", "fields", "summary");
     }
@@ -157,13 +165,48 @@ public class ProposeStandardRequestTool implements AgentTool {
         }
 
         String title = a.lines().stream().map(l -> l.quantity() + " x " + l.name()).collect(Collectors.joining(", "));
+
+        // Budget: the system checks the amount it computed itself (the model cannot pick an amount to probe)
+        // and gets a verdict only. Over budget may still be submitted; the employee must be told first.
+        String department = values.get("chargeTo") instanceof String s ? s
+                : context.requester().employee().department();
+        // the current quarter's charge: all of a purchase, the months left this quarter for a cloud call-off
+        BudgetVerdict verdict = budgetVerdict(context, department,
+                com.compras.procurement.request.SpendProfile.quarterCharge(values, a.estimatedTotal(), context.today()));
+        boolean explained = args.path("over_budget_explained").asBoolean(false)
+                || "true".equalsIgnoreCase(args.path("over_budget_explained").asText());
+        if (verdict == BudgetVerdict.OVER_BUDGET && !explained) {
+            return ToolResult.of(Map.of("budget", verdict.name(),
+                    "next", "This request is over the department's remaining budget for the quarter. Tell the "
+                            + "employee in their language: it can still be submitted, and the Finance Controller "
+                            + "will decide whether to approve it. You do not know any budget figures; do not guess "
+                            + "or mention amounts. Then call propose_standard_request again with the same fields "
+                            + "and over_budget_explained=true."),
+                    "propose_standard_request · over budget: employee to be told first");
+        }
         Proposal proposal = new Proposal(Proposal.Type.STANDARD, title, ArgParser.text(args, "summary"),
                 ArgParser.text(args, "rationale"), category.code(), category.name(), values, requirements, a.checks(),
                 a.lines(), a.estimatedTotal(), properties.currency(), a.warnings(), List.of(), null, null,
-                reuse.describe(considered), List.of());
+                reuse.describe(considered), List.of(), verdict.name());
         return ToolResult.propose(proposal, "propose_standard_request · " + title + " · "
                 + a.estimatedTotal() + " " + properties.currency()
                 + (defaults.isEmpty() ? "" : " (defaults: " + String.join(", ", defaults) + ")"));
+    }
+
+    /** One verdict per distinct amount; at most {@code budgetChecks()} per conversation, then nothing more. */
+    private BudgetVerdict budgetVerdict(ToolContext context, String department, java.math.BigDecimal amount) {
+        var conversation = context.conversation();
+        String key = department + "|" + (amount == null ? "" : amount.stripTrailingZeros().toPlainString());
+        String known = conversation.getBudgetChecks().get(key);
+        if (known != null) {
+            return BudgetVerdict.valueOf(known);
+        }
+        if (conversation.getBudgetChecks().size() >= properties.budgetChecks()) {
+            return BudgetVerdict.NOT_DISCLOSED;
+        }
+        BudgetVerdict verdict = budget.verdict(department, amount);
+        conversation.recordBudgetCheck(key, verdict.name());
+        return verdict;
     }
 
     static Object raw(JsonNode v) {

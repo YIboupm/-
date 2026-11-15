@@ -22,6 +22,11 @@ public class ApiExceptionHandler {
         return error(HttpStatus.NOT_FOUND, e.getMessage());
     }
 
+    @ExceptionHandler(com.compras.procurement.shared.ForbiddenException.class)
+    public ResponseEntity<Map<String, String>> forbidden(com.compras.procurement.shared.ForbiddenException e) {
+        return error(HttpStatus.FORBIDDEN, e.getMessage());
+    }
+
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<Map<String, String>> conflict(IllegalStateException e) {
         return error(HttpStatus.CONFLICT, e.getMessage());

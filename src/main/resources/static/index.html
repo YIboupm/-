@@ -9,13 +9,7 @@
 <body>
 <header>
   <div class="brand">Procurement<span>Hub</span></div>
-  <nav>
-    <a href="index.html" class="active">New request</a>
-    <a href="my-requests.html">My requests</a>
-    <a href="pool.html">Pool &amp; orders</a>
-    <a href="buyer.html">Buyer desk</a>
-    <a href="audit.html">Audit log</a>
-  </nav>
+  <nav></nav>
   <div class="who">Signed in as <select id="employee"></select></div>
 </header>
 
@@ -41,6 +35,7 @@
 </main>
 
 <script src="common.js"></script>
+<script>renderNav('index.html');</script>
 <script>
   const state = { id: null, busy: false, questions: [] };
   const $ = id => document.getElementById(id);
@@ -200,6 +195,7 @@
             <div class="specs">${Object.entries(l.specs || {}).map(([k, x]) => `<span class="spec">${esc(k)}: ${esc(x)}</span>`).join('')}</div></td>
             <td class="num">${l.quantity}</td><td class="num">${money(l.unitPrice, p.currency)}</td><td class="num">${money(l.lineTotal, p.currency)}</td></tr>`).join('')
         + '</tbody></table>';
+      if (p.type === 'STANDARD') h += budgetBadge(p.budget);
       if (p.estimatedTotal) h += `<div class="total"><span>${p.type === 'SPECIAL' ? 'Reference estimate' : 'Estimated total'}</span><span>${money(p.estimatedTotal, p.currency)}</span></div>`;
     }
     if (p.rationale) h += `<div class="why"><b>Why this option:</b> ${esc(p.rationale)}</div>`;
@@ -247,6 +243,7 @@
       const list = await api('GET', '/api/requests?employeeId=' + encodeURIComponent($('employee').value));
       box.innerHTML = list.length ? '<div class="section-title">My requests · <a href="my-requests.html?employee='
         + encodeURIComponent($('employee').value) + '">open all</a></div>' + myRequestsHtml(list.slice(0, 3)) : '';
+      bindCancel(box, $('employee').value, loadMyRequests);
     } catch (e) { box.innerHTML = `<div class="muted small">My requests could not be loaded: ${esc(e.message)}</div>`; }
   }
 

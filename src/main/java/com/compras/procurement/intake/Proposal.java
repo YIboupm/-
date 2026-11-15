@@ -34,7 +34,9 @@ public record Proposal(
         /** Alternatives that also fit but are not used, with the reason. */
         List<com.compras.procurement.request.AlternativeConsidered> considered,
         /** Researched products for a special request, recommended first. */
-        List<com.compras.procurement.request.SuggestedModel> candidates
+        List<com.compras.procurement.request.SuggestedModel> candidates,
+        /** WITHIN_BUDGET / OVER_BUDGET / NOT_DISCLOSED: the only budget information the employee gets. */
+        String budget
 ) {
     public enum Type { STANDARD, SPECIAL, INTERNAL_USE }
 }

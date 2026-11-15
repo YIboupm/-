@@ -9,147 +9,117 @@
 <body>
 <header>
   <div class="brand">Procurement<span>Hub</span></div>
-  <nav>
-    <a href="index.html">New request</a>
-    <a href="my-requests.html">My requests</a>
-    <a href="pool.html">Pool &amp; orders</a>
-    <a href="buyer.html" class="active">Buyer desk</a>
-    <a href="audit.html">Audit log</a>
-  </nav>
+  <nav></nav>
 </header>
 
 <main>
   <section class="panel">
-    <h2>Special requests waiting for a buyer <span class="muted small" id="count"></span></h2>
+    <h2>Buyer desk: accept, collect quotes, award <span class="muted small" id="count"></span></h2>
     <div id="list"></div>
   </section>
 </main>
 
 <script src="common.js"></script>
+<script>renderNav('buyer.html');</script>
 <script>
-  const STATUS_LABEL = { MET: 'Met', NOT_MET: 'Not met', UNKNOWN: 'Not in catalog' };
+  let policy = { singleQuoteUpTo: 3000, strategicAbove: 25000 };
+  const OWNER = { BUYER: 'Buyer', CATEGORY_MANAGER: 'Category manager (strategic)' };
 
   async function load() {
+    policy = await api('GET', '/api/buyer/requests/policy');
     const requests = await api('GET', '/api/buyer/requests');
     document.getElementById('count').textContent = `· ${requests.length} open`;
     document.getElementById('list').innerHTML = requests.length ? requests.map(card).join('')
-      : '<div class="placeholder">No special requests. Standard requests are approved and pooled automatically.</div>';
+      : '<div class="placeholder">Nothing for a buyer. Standard requests are approved and ordered without one.</div>';
     requests.forEach(bind);
   }
 
-  function daysUntil(d) {
-    if (!d) return '';
-    const days = Math.round((new Date(d) - new Date(new Date().toDateString())) / 86400000);
-    return days < 0 ? ' · overdue' : ` · in ${days} day${days === 1 ? '' : 's'}`;
+  function header(r) {
+    const step = r.status === 'BUYER_REVIEW' ? 'Step 1 of 3 · accept' : 'Step 2–3 of 3 · quotes and award';
+    return `<div class="muted small">${esc(r.number)} · ${esc(step)} · submitted ${esc((r.submittedAt || '').slice(0, 10))}
+        ${r.sourcingOwner ? ` · <span class="tag pref">${esc(OWNER[r.sourcingOwner] || r.sourcingOwner)}</span>` : ''}</div>
+      <div class="brief-title">${esc(r.title || r.categoryName)}</div>
+      <div class="muted">${esc(r.requester.name)} · ${esc(r.requester.department)}</div>
+      ${r.strategic ? `<div class="budget-badge">Strategic review: ${esc(r.strategic.reasons.join('; '))}${r.strategic.note ? ' · decision: ' + esc(r.strategic.note) : ''}</div>` : ''}
+      ${approvalsHtml(r)}`;
+  }
+
+  function acceptHtml() {
+    return `<div class="section-title">Step 1 · Accept</div>
+      <div class="muted small">Accept to start collecting quotes (policy 5). If this needs a sourcing strategy rather than quotes, send it to strategic review (policy 7).</div>
+      <div class="form-row" style="grid-template-columns: 1fr; margin-top:8px"><input type="text" placeholder="Reason (required for strategic review or reject)" data-f="reason"></div>
+      <div class="actions"><button class="primary" data-act="accept">Accept</button>
+        <button data-act="strategic">Strategic review</button><button data-act="reject">Reject</button></div>`;
+  }
+
+  function sourcingHtml(r) {
+    const reqs = requirementsOf(r);
+    const quotes = r.quotes || [];
+    const rows = quotes.map((q, i) => `<tr><td><input type="radio" name="award-${r.id}" value="${i}" ${i === 0 ? 'checked' : ''}></td>
+        <td>${esc(q.supplierName)}</td><td>${esc(q.description || '')}</td><td class="num">${q.quantity}</td>
+        <td class="num">${money(q.unitPrice, r.currency)}</td><td class="num">${money(q.total, r.currency)}</td>
+        <td class="muted small">${esc(q.reference || '')}</td></tr>`).join('');
+    return `<div class="section-title">Step 2 · Quotes <span class="muted small">(policy 5: up to ${money(policy.singleQuoteUpTo)} one quote; above, three; above ${money(policy.strategicAbove)} strategic)</span></div>
+      ${quotes.length ? `<table><thead><tr><th></th><th>Supplier</th><th>Item</th><th class="num">Qty</th><th class="num">Unit</th><th class="num">Total</th><th>Reference</th></tr></thead><tbody>${rows}</tbody></table>`
+        : '<div class="muted">No quotes yet.</div>'}
+      <div class="form-row" style="margin-top:8px">
+        <input type="text" placeholder="Supplier" data-q="supplierName">
+        <input type="text" placeholder="Item and configuration" data-q="description" value="${esc(r.chosenModel || '')}">
+        <input type="text" placeholder="Qty" data-q="quantity" value="${esc((r.attributes && r.attributes.quantity) || 1)}">
+        <input type="text" placeholder="Unit price (EUR)" data-q="unitPrice">
+      </div>
+      <div class="form-row" style="grid-template-columns: 1fr"><input type="text" placeholder="Reference: quote number, link or screenshot name" data-q="reference"></div>
+      <div class="actions"><button data-act="add-quote">Add quote</button></div>
+
+      ${quotes.length ? `<div class="section-title">Step 3 · Award the selected quote</div>
+        ${r.chosenModel ? `<div class="muted small">The employee chose: ${esc(r.chosenModel)}. If you buy something else, say why.</div>` : ''}
+        <div class="form-row" style="grid-template-columns: 1fr"><input type="text" placeholder="Why not the employee's choice? (only if different)" data-f="substitutionReason"></div>
+        ${reqs.length ? `<div class="muted small" style="margin:6px 0 4px">Does the item you award meet these?</div><div class="confirm-list">${reqs.map((q, i) => `<label class="opt"><input type="checkbox" data-req="${i}">
+          <span>${esc(q.description)} <span class="muted small">${q.strength === 'preference' ? '(nice to have)' : '(must have)'}</span></span></label>`).join('')}</div>` : ''}
+        <div class="form-row" style="grid-template-columns: 1fr"><input type="text" placeholder="Fewer quotes than the policy asks? Say why (e.g. only one distributor)" data-f="quoteException"></div>
+        <div class="form-row" style="grid-template-columns: 1fr"><input type="text" placeholder="Note to the employee, or the reason if you reject / escalate" data-f="reason"></div>
+        <div class="actions"><button class="primary" data-act="award">Award and send to approval</button>
+          ${r.sourcingOwner === 'CATEGORY_MANAGER' ? '' : '<button data-act="strategic">Strategic review</button>'}<button data-act="reject">Reject</button></div>`
+      : `<div class="form-row" style="grid-template-columns: 1fr"><input type="text" placeholder="Reason (strategic review or reject)" data-f="reason"></div>
+        <div class="actions">${r.sourcingOwner === 'CATEGORY_MANAGER' ? '' : '<button data-act="strategic">Strategic review</button>'}<button data-act="reject">Reject</button></div>`}`;
   }
 
   function card(r) {
-    const line = r.lines[0];
-    const qty = line ? line.quantity : (r.attributes && r.attributes.quantity) || 1;
-    const title = r.title || r.categoryName;
-    // what to source: the employee's conditions; when a reference item exists, how it compares
-    const checks = r.requirementChecks || [];
-    const reqs = (r.requirements && r.requirements.length ? r.requirements : checks.map(k => k.requirement));
-    const reqList = reqs.length ? '<ul class="reqs">' + reqs.map(q => {
-        const k = checks.find(c => c.requirement.description === q.description);
-        const ref = k ? `<span class="muted small">Reference item: ${esc(k.actual || 'not specified')}</span>
-            <span class="check ${k.status}">${STATUS_LABEL[k.status]}</span>` : '';
-        return `<li><span class="tag ${q.strength === 'preference' ? 'pref' : 'must'}">${q.strength === 'preference' ? 'Nice to have' : 'Must have'}</span>
-          <span style="flex:1">${esc(q.description)}</span>${ref}</li>`;
-      }).join('') + '</ul>'
-      : '<div class="muted">No structured requirements recorded: read the conversation below.</div>';
-    // ruled out: company resources / catalog items the agent considered, plus why the catalog does not fit
-    const alts = (r.alternativesConsidered || []).map(a => `<li><span class="what">${esc(a.name)}</span>
-        <span class="muted small"> · ${esc(a.kind)} ${esc(a.id)}</span><div class="why">${esc(a.whyNot)}</div></li>`);
-    const catalogReasons = (r.specialRequirements || []).filter(s => !s.startsWith('Not using '))
-      .map(s => `<li><span class="what">Standard catalog</span><div class="why">${esc(s)}</div></li>`);
-    const ruled = alts.concat(catalogReasons);
-    const words = (r.originalRequest || '').split('\n').filter(Boolean);
-
-    return `<div class="card" id="card-${r.id}">
-      <div class="muted small">${esc(r.number)} · special request · submitted ${esc((r.submittedAt || '').slice(0, 10))}</div>
-      <div class="brief-title">${esc(title)}</div>
-      <div class="muted">${esc(r.requester.name)} · ${esc(r.requester.department)}</div>
-
-      <div class="facts">
-        <div class="fact"><div class="k">Quantity</div><div class="v">${esc(qty)}</div></div>
-        <div class="fact"><div class="k">Needed by</div><div class="v">${esc(r.neededBy || 'not given')}<span class="muted small" style="font-weight:400">${daysUntil(r.neededBy)}</span></div></div>
-        <div class="fact"><div class="k">Deliver to</div><div class="v">${esc(r.deliverySite || '')}</div></div>
-        <div class="fact"><div class="k">Charge to</div><div class="v">${esc(r.chargeTo ? r.chargeTo.department + ' · ' + r.chargeTo.costCenter : r.requester.costCenter)}</div></div>
-      </div>
-
-      <div class="section-title">What to source</div>
-      ${reqList}
-
-      ${(r.suggestedModels || []).length ? `<div class="section-title">Suggested models · researched by the agent, discussed with the employee</div>
-        ${candidatesHtml(r.suggestedModels)}
-        <div class="muted small" style="margin-top:4px">List prices and specs come from the linked public pages; confirm price and availability with your supplier.</div>` : ''}
-
-      ${r.mappingRationale ? `<div class="section-title">What it is for</div><div>${esc(r.mappingRationale)}</div>` : ''}
-
-      ${ruled.length ? `<div class="section-title">Already ruled out</div><ul class="ruled">${ruled.join('')}</ul>` : ''}
-
-      ${line ? `<div class="section-title">Closest standard item (reference only)</div>
-        <div>${line.quantity} × ${esc(line.name)} <span class="muted">(${esc(line.sku)}, ${money(line.estimatedUnitPrice, r.currency)} each)</span></div>` : ''}
-
-      <details class="convo"><summary>Conversation with the employee (${words.length} lines)</summary>
-        <div class="quote">${esc(r.originalRequest || '(not recorded)')}</div></details>
-
-      <div class="section-title">Your sourcing decision</div>
-      ${r.chosenModel ? `<div class="muted small" style="margin-bottom:6px">Pre-filled with the employee's choice. If you buy something else, say why: the employee will see it.</div>` : ''}
-      <div class="form-row">
-        <input type="text" placeholder="Item you sourced, e.g. MacBook Pro 16&quot; M4 Max, 64 GB" data-f="description" value="${esc(r.chosenModel || '')}">
-        <input type="text" placeholder="Supplier" data-f="supplierName">
-        <input type="text" placeholder="Qty" value="${qty}" data-f="quantity">
-        <input type="text" placeholder="Unit price (EUR)" data-f="unitPrice">
-      </div>
-      <div class="form-row subst" style="grid-template-columns: 1fr; display:none">
-        <input type="text" placeholder="Why not the employee's choice? e.g. M4 model discontinued, current model bought" data-f="substitutionReason">
-      </div>
-      ${reqs.length ? `<div class="section-title">Does the item you are buying meet these?</div>
-        <div class="confirm-list">${reqs.map((q, i) => `<label class="opt"><input type="checkbox" data-req="${i}">
-          <span>${esc(q.description)} <span class="muted small">${q.strength === 'preference' ? '(nice to have)' : '(must have)'}</span></span></label>`).join('')}</div>` : ''}
-      <div class="form-row" style="grid-template-columns: 1fr">
-        <input type="text" placeholder="Note to the employee, or the reason if you reject" data-f="note">
-      </div>
-      <div class="actions">
-        <button class="primary" data-act="approve">Approve and order</button>
-        <button data-act="reject">Reject</button>
-      </div>
-    </div>`;
+    return `<div class="card" id="card-${r.id}">${header(r)}${briefHtml(r)}${r.status === 'BUYER_REVIEW' ? acceptHtml() : sourcingHtml(r)}</div>`;
   }
 
   function bind(r) {
     const el = document.getElementById('card-' + r.id);
-    const val = f => el.querySelector(`[data-f="${f}"]`).value.trim();
-    const reqs = (r.requirements && r.requirements.length ? r.requirements : (r.requirementChecks || []).map(k => k.requirement));
-    const desc = el.querySelector('[data-f="description"]');
-    const toggleSubst = () => {
-      const changed = r.chosenModel && desc.value.trim().toLowerCase() !== r.chosenModel.trim().toLowerCase();
-      el.querySelector('.subst').style.display = changed ? '' : 'none';
-    };
-    desc.addEventListener('input', toggleSubst);
-    el.querySelector('[data-act="approve"]').onclick = () => act(async () => {
-      await api('POST', `/api/buyer/requests/${r.id}/approve`, {
-        description: val('description'), supplierName: val('supplierName'),
-        quantity: parseInt(val('quantity'), 10), unitPrice: val('unitPrice') || null, note: val('note'),
-        substitutionReason: val('substitutionReason'),
-        confirmations: reqs.map((q, i) => ({ requirement: q.description, met: el.querySelector(`[data-req="${i}"]`).checked })),
-      });
-      toast(`${r.number} approved and ordered`);
+    const val = f => { const x = el.querySelector(`[data-f="${f}"]`); return x ? x.value.trim() : ''; };
+    const q = f => el.querySelector(`[data-q="${f}"]`).value.trim();
+    const on = (act, fn) => { const b = el.querySelector(`[data-act="${act}"]`); if (b) b.onclick = () => run(fn); };
+    on('accept', async () => { await api('POST', `/api/buyer/requests/${r.id}/accept`); toast(`${r.number} accepted`); });
+    on('strategic', async () => { await api('POST', `/api/buyer/requests/${r.id}/strategic`, { reason: val('reason') }); toast(`${r.number} sent to strategic review`); });
+    on('reject', async () => { await api('POST', `/api/buyer/requests/${r.id}/reject`, { reason: val('reason') }); toast(`${r.number} rejected`); });
+    on('add-quote', async () => {
+      await api('POST', `/api/buyer/requests/${r.id}/quotes`, { supplierName: q('supplierName'), description: q('description'),
+        quantity: parseInt(q('quantity'), 10) || 1, unitPrice: q('unitPrice') || null, reference: q('reference') });
+      toast('Quote added');
     });
-    el.querySelector('[data-act="reject"]').onclick = () => act(async () => {
-      await api('POST', `/api/buyer/requests/${r.id}/reject`, { reason: val('note') });
-      toast(`${r.number} rejected`);
+    on('award', async () => {
+      const chosen = el.querySelector(`input[name="award-${r.id}"]:checked`);
+      const reqs = requirementsOf(r);
+      await api('POST', `/api/buyer/requests/${r.id}/award`, {
+        quoteIndex: chosen ? parseInt(chosen.value, 10) : 0, substitutionReason: val('substitutionReason'),
+        quoteException: val('quoteException'), note: val('reason'),
+        confirmations: reqs.map((x, i) => ({ requirement: x.description, met: el.querySelector(`[data-req="${i}"]`).checked })),
+      });
+      toast(`${r.number}: awarded, now in approval and the budget check`);
     });
   }
 
-  async function act(fn) {
+  async function run(fn) {
     try { await fn(); await load(); }
     catch (e) { toast('Error: ' + e.message); }
   }
 
   load().catch(e => toast('Error: ' + e.message));
 </script>
+ipt>
 </body>
 </html>

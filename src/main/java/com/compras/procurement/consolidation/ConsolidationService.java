@@ -147,7 +147,33 @@ public class ConsolidationService {
         gateway.issue(order);
         events.publishEvent(new Events.OrderReleased(order.id(), order.number(), order.sku(), order.totalQuantity(),
                 List.of(ReleaseReason.SPECIAL_REQUEST.name()), Instant.now(clock)));
-        requests.markOrdered(requestId, List.of(order.number()));
+        requests.markOrdered(requestId, List.of(order.number()), s.total());
+        return order;
+    }
+
+    /**
+     * A call-off under a framework agreement (cloud): the order tells the provider/cloud team to provision; the
+     * amount is the estimated contract value. The budget is charged for the current quarter's share only.
+     */
+    public ConsolidatedOrder issueCallOff(String requestId) {
+        PurchaseRequest request = requests.get(requestId);
+        PurchaseRequest.Line line = request.getLines().get(0);
+        LocalDate today = LocalDate.now(clock);
+        String department = request.chargeDepartment();
+        ConsolidatedOrder order = orders.save(new ConsolidatedOrder(new ObjectId().toHexString(),
+                sequences.nextNumber("PO"), line.sku(), line.name(), line.supplierId(), line.supplierName(),
+                request.getDeliverySite(), line.quantity(), line.estimatedUnitPrice(), line.estimatedUnitPrice(),
+                line.estimatedTotal(), line.estimatedTotal(), BigDecimal.ZERO.setScale(2), request.getCurrency(),
+                List.of(ReleaseReason.FRAMEWORK_CALL_OFF),
+                List.of(new ConsolidatedOrder.Allocation(null, request.getId(), request.getNumber(),
+                        request.getRequester().name(), department, line.quantity(), request.getNeededBy(),
+                        line.estimatedUnitPrice(), 0)),
+                today, Instant.now(clock)));
+        gateway.issue(order);
+        events.publishEvent(new Events.OrderReleased(order.id(), order.number(), order.sku(), order.totalQuantity(),
+                List.of(ReleaseReason.FRAMEWORK_CALL_OFF.name()), Instant.now(clock)));
+        requests.markOrdered(requestId, List.of(order.number()),
+                com.compras.procurement.request.SpendProfile.quarterCharge(request, today));
         return order;
     }
 
@@ -208,9 +234,16 @@ public class ConsolidationService {
         Set<String> requestIds = claimed.stream().map(DemandLine::getRequestId).collect(Collectors.toCollection(LinkedHashSet::new));
         for (String requestId : requestIds) {
             if (!lines.existsByRequestIdAndStatus(requestId, DemandLine.Status.POOLED)) {
-                List<String> numbers = lines.findByRequestId(requestId).stream()
+                List<DemandLine> requestLines = lines.findByRequestId(requestId);
+                List<String> numbers = requestLines.stream()
                         .map(DemandLine::getOrderNumber).filter(Objects::nonNull).distinct().toList();
-                requests.markOrdered(requestId, numbers);
+                // what this request really costs: its quantities at the price of the order each line landed on
+                BigDecimal actual = requestLines.stream()
+                        .filter(l -> l.getOrderId() != null)
+                        .map(l -> orders.findById(l.getOrderId())
+                                .map(o -> Money.times(o.unitPrice(), l.getQuantity())).orElse(BigDecimal.ZERO))
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                requests.markOrdered(requestId, numbers, Money.scale(actual));
             }
         }
     }

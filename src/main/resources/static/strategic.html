@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Procurement Hub · Strategic review</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="brand">Procurement<span>Hub</span></div>
+  <nav></nav>
+  <div class="who">Signed in as <select id="staff"></select></div>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>Strategic review · category manager <span class="muted small" id="count"></span></h2>
+    <div class="body">
+      <p class="muted small">Policy 7: these purchases are decided by the category manager. The assistant's conversation is kept as a record; it does not recommend suppliers here.</p>
+      <div id="list"><div class="placeholder">Loading…</div></div>
+    </div>
+  </section>
+</main>
+
+<script src="common.js"></script>
+<script>renderNav('strategic.html');</script>
+<script>
+  const $ = id => document.getElementById(id);
+  const OUTCOMES = [
+    ['USE_EXISTING_AGREEMENT', 'Use an existing agreement', 'Catalog request: continues on the standard route. Otherwise returned to the employee.'],
+    ['SOURCE', 'Run quotes / tender', 'You collect quotes on the buyer desk; the award then goes through approval.'],
+    ['NEW_FRAMEWORK', 'Negotiate a framework', 'This request is the first call-off; add the item to the catalog by hand once signed.'],
+    ['REJECT', 'Reject', 'The employee sees your reason.'],
+  ];
+
+  function card(r) {
+    const s = r.strategic || { reasons: r.routeReasons || [] };
+    return `<div class="card" id="card-${r.id}">
+      <div class="muted small">${esc(r.number)} · ${s.source === 'MANUAL' ? 'raised by ' + esc(s.raisedBy) : 'policy trigger'} · ${esc((s.raisedAt || r.submittedAt || '').slice(0, 10))}</div>
+      <div class="brief-title">${esc(r.title || (r.lines[0] && r.lines[0].name) || r.categoryName)}</div>
+      <div class="muted">${esc(r.requester.name)} · ${esc(r.requester.department)}${r.amount || r.estimatedTotal ? ' · ' + money(r.estimatedTotal, r.currency) : ''}</div>
+      <div class="inbox-card reason" style="border:none;padding:6px 10px;margin:8px 0">Why strategic: ${esc((s.reasons || []).join('; '))}</div>
+      ${r.splitNote ? `<div class="budget-badge over">${esc(r.splitNote)}</div>` : ''}
+      ${approvalsHtml(r)}
+      ${briefHtml(r)}
+      <div class="section-title">Your decision</div>
+      <div class="form-row" style="grid-template-columns: 1fr"><input type="text" placeholder="Note (required for 'existing agreement' and 'reject': the employee sees it)" data-f="note"></div>
+      <div class="outcomes">${OUTCOMES.map(([k, label, help]) => `<button data-outcome="${k}"${k === 'SOURCE' ? ' class="primary"' : ''}>${label}<small>${help}</small></button>`).join('')}</div>
+    </div>`;
+  }
+
+  async function load() {
+    const id = $('staff').value;
+    history.replaceState(null, '', '?staff=' + encodeURIComponent(id));
+    const items = await api('GET', '/api/strategic');
+    $('count').textContent = `· ${items.length}`;
+    $('list').innerHTML = items.length ? items.map(card).join('') : '<div class="placeholder">No strategic purchases waiting.</div>';
+    items.forEach(r => {
+      const el = $('card-' + r.id);
+      el.querySelectorAll('[data-outcome]').forEach(b => b.onclick = async () => {
+        try {
+          await api('POST', `/api/strategic/${r.id}/decide`, { outcome: b.dataset.outcome,
+            note: el.querySelector('[data-f="note"]').value.trim() }, id);
+          toast(`${r.number}: ${b.dataset.outcome}`);
+          await load();
+        } catch (e) { toast('Error: ' + e.message); }
+      });
+    });
+  }
+
+  async function init() {
+    const staff = await api('GET', '/api/staff');
+    const wanted = new URLSearchParams(location.search).get('staff') || 'S41';
+    $('staff').innerHTML = staff.map(m => `<option value="${esc(m.id)}" ${m.id === wanted ? 'selected' : ''}>${esc(m.name)} · ${esc(m.title)}</option>`).join('');
+    $('staff').addEventListener('change', () => load().catch(e => toast('Error: ' + e.message)));
+    await load();
+  }
+  init().catch(e => toast('Error: ' + e.message));
+</script>
+</body>
+</html>

@@ -31,8 +31,9 @@ public final class Events {
         public String aggregateId() { return orderId; }
     }
 
-    /** All lines of a request are on purchase orders. */
-    public record RequestOrdered(String requestId, List<String> orderNumbers, Instant occurredAt) implements DomainEvent {
+    /** All lines of a request are on purchase orders; {@code amount} is what the request actually costs. */
+    public record RequestOrdered(String requestId, String requestNumber, String department, List<String> orderNumbers,
+                                 java.math.BigDecimal amount, Instant occurredAt) implements DomainEvent {
         public String aggregateId() { return requestId; }
     }
 
@@ -47,9 +48,44 @@ public final class Events {
         public String aggregateId() { return conversationId; }
     }
 
-    /** A buyer rejected a request; the employee sees the reason in "My requests". */
+    /** The requester withdrew the request before it was ordered. */
+    public record RequestCancelled(String requestId, String requestNumber, String by, String reason,
+                                   Instant occurredAt) implements DomainEvent {
+        public String aggregateId() { return requestId; }
+    }
+
+    /** A buyer priced a special request; the spend now goes through approval. */
+    public record RequestSourced(String requestId, Instant occurredAt) implements DomainEvent {
+        public String aggregateId() { return requestId; }
+    }
+
+    /** An approval step is waiting for someone. */
+    public record ApprovalRequested(String requestId, String requestNumber, String approverName, String role,
+                                    String reason, Instant occurredAt) implements DomainEvent {
+        public String aggregateId() { return requestId; }
+    }
+
+    /** Someone approved or rejected their step. */
+    public record ApprovalDecided(String requestId, String requestNumber, String approverName, String role,
+                                  boolean approved, String note, Instant occurredAt) implements DomainEvent {
+        public String aggregateId() { return requestId; }
+    }
+
+    /** A buyer or approver rejected a request; the employee sees the reason in "My requests". */
     public record RequestRejected(String requestId, String requestNumber, String reason, Instant occurredAt)
             implements DomainEvent {
+        public String aggregateId() { return requestId; }
+    }
+
+    /** Policy 7: a purchase went to the category manager (AUTO trigger or MANUAL escalation). */
+    public record StrategicReviewRequested(String requestId, String requestNumber, String source, List<String> reasons,
+                                           String raisedBy, Instant occurredAt) implements DomainEvent {
+        public String aggregateId() { return requestId; }
+    }
+
+    /** The category manager decided how a strategic purchase is sourced. */
+    public record StrategicDecided(String requestId, String requestNumber, String outcome, String decidedBy,
+                                   String note, Instant occurredAt) implements DomainEvent {
         public String aggregateId() { return requestId; }
     }
 }

@@ -9,13 +9,7 @@
 <body>
 <header>
   <div class="brand">Procurement<span>Hub</span></div>
-  <nav>
-    <a href="index.html">New request</a>
-    <a href="my-requests.html">My requests</a>
-    <a href="pool.html" class="active">Pool &amp; orders</a>
-    <a href="buyer.html">Buyer desk</a>
-    <a href="audit.html">Audit log</a>
-  </nav>
+  <nav></nav>
 </header>
 
 <main>
@@ -70,11 +64,13 @@
 </main>
 
 <script src="common.js"></script>
+<script>renderNav('pool.html');</script>
 <script>
   const $ = id => document.getElementById(id);
   const REASON = {
     URGENT: 'Urgent', CONSOLIDATION_WINDOW: 'Weekly window', BEST_PRICE_REACHED: 'Best price reached', DEADLINE: 'Deadline',
-    SPECIAL_REQUEST: 'Special request'
+    SPECIAL_REQUEST: 'Special request',
+    FRAMEWORK_CALL_OFF: 'Cloud call-off (framework agreement)'
   };
 
   async function init() {

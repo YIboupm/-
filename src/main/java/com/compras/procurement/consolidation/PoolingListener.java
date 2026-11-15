@@ -33,8 +33,13 @@ public class PoolingListener {
     @EventListener
     public void on(Events.RequestApproved event) {
         PurchaseRequest request = requests.get(event.requestId());
-        if (request.isNonStandard()) {
-            consolidation.issueSpecial(request.getId()); // sourced individually by a buyer: never pooled
+        if (request.isNonStandard() || request.getSourced() != null) {
+            // sourced individually (buyer, or the category manager's RFQ): its own order, never pooled
+            consolidation.issueSpecial(request.getId());
+            return;
+        }
+        if (com.compras.procurement.request.SpendProfile.isRecurring(request.getAttributes())) {
+            consolidation.issueCallOff(request.getId()); // cloud under the enterprise agreement: nothing to pool
             return;
         }
         Instant now = Instant.now(clock);
@@ -50,5 +55,13 @@ public class PoolingListener {
         if (request.isUrgent()) {
             consolidation.releaseUrgent(request.getId());
         }
+    }
+
+    /** A cancelled request leaves the pool (lines already on an order stay there). */
+    @EventListener
+    public void on(Events.RequestCancelled event) {
+        List<DemandLine> open = lines.findByRequestId(event.requestId()).stream()
+                .filter(l -> l.getStatus() == DemandLine.Status.POOLED).toList();
+        lines.deleteAll(open);
     }
 }

@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Procurement Hub · Approvals</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="brand">Procurement<span>Hub</span></div>
+  <nav></nav>
+  <div class="who">Signed in as <select id="staff"></select></div>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>Waiting for my approval <span class="muted small" id="count"></span></h2>
+    <div class="body" id="list"><div class="placeholder">Loading…</div></div>
+  </section>
+</main>
+
+<script src="common.js"></script>
+<script>renderNav('approvals.html');</script>
+<script>
+  const $ = id => document.getElementById(id);
+  let staff = [];
+
+  function budgetPanel(b, amount, currency) {
+    if (!b) return '<div class="muted small">Budget figures are not shown for your role.</div>';
+    const after = Number(b.available) - Number(amount || 0);
+    return `<div class="section-title">${esc(b.department)} budget, ${esc(b.period)}</div>
+      <div class="figs">
+        <div>Allocated<b>${money(b.allocated, currency)}</b></div>
+        <div>Committed<b>${money(b.committed, currency)}</b></div>
+        <div>Reserved<b>${money(b.reserved, currency)}</b></div>
+        <div>Available<b>${money(b.available, currency)}</b></div>
+        <div>After this request<b style="color:${after < 0 ? 'var(--err)' : 'inherit'}">${money(after, currency)}</b></div>
+      </div>`;
+  }
+
+  function card(item) {
+    const r = item.request, s = item.step;
+    const amount = r.sourced ? r.sourced.total : r.estimatedTotal;
+    const what = r.sourced ? `${esc(r.sourced.description)} · ${esc(r.sourced.supplierName)}`
+      : (r.lines || []).map(l => `${l.quantity} × ${esc(l.name)}`).join(', ') || esc(r.title || r.categoryName);
+    return `<div class="inbox-card" id="c-${r.id}">
+      <div class="muted small">${esc(r.number)} · ${esc(r.requester.name)} (${esc(r.requester.department)}) · charged to ${esc(r.chargeTo ? r.chargeTo.department : r.requester.department)}</div>
+      <div class="brief-title">${esc(r.title || what)}</div>
+      <div>${what} · <b>${s.stage === 'NEED' ? 'not priced yet' : money(amount, r.currency)}</b>${r.neededBy ? ' · needed by ' + esc(r.neededBy) : ''}</div>
+      <div class="reason">You are asked as ${esc(ROLE_LABEL[s.role] || s.role)}: ${esc(s.reason)}</div>
+      ${r.mappingRationale ? `<div class="muted">${esc(r.mappingRationale)}</div>` : ''}
+      ${r.splitNote ? `<div class="budget-badge over">${esc(r.splitNote)}</div>` : ''}
+      ${r.strategic && r.strategic.outcome ? `<div class="muted small">Strategic review: ${esc(r.strategic.outcome)} by ${esc(r.strategic.decidedBy)}${r.strategic.note ? ' · ' + esc(r.strategic.note) : ''}</div>` : ''}
+      ${approvalsHtml(r)}
+      ${s.stage === 'NEED' ? '' : budgetPanel(item.budget, amount, r.currency)}
+      <div class="form-row" style="grid-template-columns: 1fr; margin-top:10px">
+        <input type="text" placeholder="Note (required to reject or to send to strategic review)" data-f="note">
+      </div>
+      <div class="actions">
+        <button class="primary" data-act="approve">Approve</button>
+        <button data-act="reject">Reject</button>
+        <button data-act="strategic" title="Policy 6/7: the need is fine but how to buy it needs procurement">Strategic review</button>
+      </div>
+    </div>`;
+  }
+
+  async function load() {
+    const id = $('staff').value;
+    history.replaceState(null, '', '?staff=' + encodeURIComponent(id));
+    const items = await api('GET', '/api/approvals', null, id);
+    $('count').textContent = `· ${items.length}`;
+    $('list').innerHTML = items.length ? items.map(card).join('')
+      : '<div class="placeholder">Nothing is waiting for you.</div>';
+    items.forEach(item => {
+      const el = $('c-' + item.request.id);
+      const decide = async approve => {
+        try {
+          await api('POST', `/api/approvals/${item.request.id}/decide`,
+            { approve, note: el.querySelector('[data-f="note"]').value.trim() }, id);
+          toast(`${item.request.number} ${approve ? 'approved' : 'rejected'}`);
+          await load();
+        } catch (e) { toast('Error: ' + e.message); }
+      };
+      el.querySelector('[data-act="strategic"]').onclick = async () => {
+        try {
+          await api('POST', `/api/approvals/${item.request.id}/strategic`,
+            { approve: false, note: el.querySelector('[data-f="note"]').value.trim() }, id);
+          toast(`${item.request.number} sent to strategic review`);
+          await load();
+        } catch (e) { toast('Error: ' + e.message); }
+      };
+      el.querySelector('[data-act="approve"]').onclick = () => decide(true);
+      el.querySelector('[data-act="reject"]').onclick = () => decide(false);
+    });
+  }
+
+  async function init() {
+    staff = (await api('GET', '/api/staff')).filter(m => !['BUYER', 'CATEGORY_MANAGER'].includes(m.role));
+    const wanted = new URLSearchParams(location.search).get('staff') || 'S02';
+    $('staff').innerHTML = staff.map(m => `<option value="${esc(m.id)}" ${m.id === wanted ? 'selected' : ''}>${esc(m.name)} · ${esc(m.title)}</option>`).join('');
+    $('staff').addEventListener('change', () => load().catch(e => toast('Error: ' + e.message)));
+    await load();
+  }
+  init().catch(e => toast('Error: ' + e.message));
+</script>
+</body>
+</html>

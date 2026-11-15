@@ -1,469 +1,543 @@
 [
-  {
-    "sku": "LAP-STD",
-    "categoryCode": "LAPTOP",
-    "name": "Standard Office Laptop",
-    "description": "14-inch business laptop for everyday office work.",
-    "suitableFor": [
-      "email and office documents",
-      "spreadsheets",
-      "sales",
-      "finance",
-      "HR",
-      "administration",
-      "customer support"
-    ],
-    "specs": {
-      "os": "Windows 11 Pro",
-      "cpu": "Intel Core Ultra 5",
-      "ram": "16 GB",
-      "storage": "512 GB SSD",
-      "display": "14\" FHD",
-      "gpu": "Integrated"
-    },
-    "supplierId": "SUP-TECH",
-    "supplierName": "TechDistribucion S.L.",
-    "currency": "EUR",
-    "listPrice": 899.00,
-    "priceBreaks": [
-      {
-        "minQty": 5,
-        "unitPrice": 849.00
-      },
-      {
-        "minQty": 10,
-        "unitPrice": 809.00
-      },
-      {
-        "minQty": 20,
-        "unitPrice": 779.00
-      }
-    ],
-    "leadTimeDays": 5,
-    "compatibleWith": [],
-    "attributes": {
-      "os": "Windows 11",
-      "platform": "Intel x86",
-      "ramGb": 16,
-      "storageGb": 512,
-      "screenInches": 14,
-      "gpuType": "integrated",
-      "gpuComputeApi": "DirectML",
-      "metalSupported": false,
-      "gpuVramGb": 0
-    }
+ {
+  "sku": "LAP-STD",
+  "categoryCode": "LAPTOP",
+  "name": "Standard Office Laptop",
+  "description": "14-inch business laptop for everyday office work.",
+  "suitableFor": [
+   "email and office documents",
+   "spreadsheets",
+   "sales",
+   "finance",
+   "HR",
+   "administration",
+   "customer support"
+  ],
+  "specs": {
+   "os": "Windows 11 Pro",
+   "cpu": "Intel Core Ultra 5",
+   "ram": "16 GB",
+   "storage": "512 GB SSD",
+   "display": "14\" FHD",
+   "gpu": "Integrated"
   },
-  {
-    "sku": "LAP-DEV",
-    "categoryCode": "LAPTOP",
-    "name": "Developer Laptop",
-    "description": "16-inch performance laptop for compiling code, containers and data work.",
-    "suitableFor": [
-      "software development",
-      "data analysis and data science",
-      "running virtual machines or containers",
-      "IT administration"
-    ],
-    "specs": {
-      "os": "Windows 11 Pro",
-      "cpu": "Intel Core Ultra 7",
-      "ram": "32 GB",
-      "storage": "1 TB SSD",
-      "display": "16\" QHD",
-      "gpu": "Integrated"
-    },
-    "supplierId": "SUP-TECH",
-    "supplierName": "TechDistribucion S.L.",
-    "currency": "EUR",
-    "listPrice": 1499.00,
-    "priceBreaks": [
-      {
-        "minQty": 5,
-        "unitPrice": 1429.00
-      },
-      {
-        "minQty": 10,
-        "unitPrice": 1369.00
-      }
-    ],
-    "leadTimeDays": 7,
-    "compatibleWith": [],
-    "attributes": {
-      "os": "Windows 11",
-      "platform": "Intel x86",
-      "ramGb": 32,
-      "storageGb": 1000,
-      "screenInches": 16,
-      "gpuType": "integrated",
-      "gpuComputeApi": "DirectML",
-      "metalSupported": false,
-      "gpuVramGb": 0
-    }
-  },
-  {
-    "sku": "LAP-DES",
-    "categoryCode": "LAPTOP",
-    "name": "Design Workstation Laptop",
-    "description": "16-inch colour-accurate workstation with dedicated graphics.",
-    "suitableFor": [
-      "graphic design",
-      "UI/UX design",
-      "photo editing",
-      "video editing",
-      "3D and rendering"
-    ],
-    "specs": {
-      "os": "Windows 11 Pro",
-      "cpu": "Intel Core Ultra 9",
-      "ram": "32 GB",
-      "storage": "1 TB SSD",
-      "display": "16\" 3.2K, 100% DCI-P3",
-      "gpu": "NVIDIA RTX 4060 8 GB"
-    },
-    "supplierId": "SUP-TECH",
-    "supplierName": "TechDistribucion S.L.",
-    "currency": "EUR",
-    "listPrice": 2199.00,
-    "priceBreaks": [
-      {
-        "minQty": 5,
-        "unitPrice": 2099.00
-      },
-      {
-        "minQty": 10,
-        "unitPrice": 1999.00
-      }
-    ],
-    "leadTimeDays": 10,
-    "compatibleWith": [],
-    "attributes": {
-      "os": "Windows 11",
-      "platform": "Intel x86",
-      "ramGb": 32,
-      "storageGb": 1000,
-      "screenInches": 16,
-      "gpuType": "dedicated",
-      "gpuComputeApi": "CUDA",
-      "metalSupported": false,
-      "gpuVramGb": 8
-    }
-  },
-  {
-    "sku": "MON-24-FHD",
-    "categoryCode": "ACCESSORY",
-    "name": "24\" Full HD Monitor",
-    "description": "Basic external monitor.",
-    "suitableFor": [
-      "general office work",
-      "a second screen",
-      "hot desks"
-    ],
-    "specs": {
-      "size": "24\"",
-      "resolution": "1920x1080",
-      "ports": "HDMI, DisplayPort"
-    },
-    "supplierId": "SUP-TECH",
-    "supplierName": "TechDistribucion S.L.",
-    "currency": "EUR",
-    "listPrice": 159.00,
-    "priceBreaks": [
-      {
-        "minQty": 5,
-        "unitPrice": 149.00
-      },
-      {
-        "minQty": 10,
-        "unitPrice": 139.00
-      }
-    ],
-    "leadTimeDays": 4,
-    "compatibleWith": [],
-    "attributes": {
-      "screenInches": 24,
-      "resolution": "FHD",
-      "usbC": "no",
-      "colorCalibrated": "no"
-    }
-  },
-  {
-    "sku": "MON-27-QHD",
-    "categoryCode": "ACCESSORY",
-    "name": "27\" QHD USB-C Monitor",
-    "description": "Larger monitor with single-cable USB-C connection.",
-    "suitableFor": [
-      "large spreadsheets",
-      "software development",
-      "working with many windows",
-      "a bigger screen"
-    ],
-    "specs": {
-      "size": "27\"",
-      "resolution": "2560x1440",
-      "ports": "USB-C 65W, HDMI"
-    },
-    "supplierId": "SUP-TECH",
-    "supplierName": "TechDistribucion S.L.",
-    "currency": "EUR",
-    "listPrice": 289.00,
-    "priceBreaks": [
-      {
-        "minQty": 5,
-        "unitPrice": 269.00
-      },
-      {
-        "minQty": 10,
-        "unitPrice": 255.00
-      }
-    ],
-    "leadTimeDays": 4,
-    "compatibleWith": [],
-    "attributes": {
-      "screenInches": 27,
-      "resolution": "QHD",
-      "usbC": "yes",
-      "colorCalibrated": "no"
-    }
-  },
-  {
-    "sku": "MON-27-4K",
-    "categoryCode": "ACCESSORY",
-    "name": "27\" 4K Colour-Calibrated Monitor",
-    "description": "Factory-calibrated monitor for colour-critical work.",
-    "suitableFor": [
-      "graphic design",
-      "photo and video editing",
-      "print work"
-    ],
-    "specs": {
-      "size": "27\"",
-      "resolution": "3840x2160",
-      "color": "99% Adobe RGB, factory calibrated"
-    },
-    "supplierId": "SUP-TECH",
-    "supplierName": "TechDistribucion S.L.",
-    "currency": "EUR",
-    "listPrice": 599.00,
-    "priceBreaks": [
-      {
-        "minQty": 5,
-        "unitPrice": 569.00
-      }
-    ],
-    "leadTimeDays": 6,
-    "compatibleWith": [],
-    "attributes": {
-      "screenInches": 27,
-      "resolution": "4K",
-      "usbC": "no",
-      "colorCalibrated": "yes"
-    }
-  },
-  {
-    "sku": "DOCK-USBC",
-    "categoryCode": "ACCESSORY",
-    "name": "USB-C Docking Station",
-    "description": "Connects a laptop to monitors, network and peripherals with one cable.",
-    "suitableFor": [
-      "connecting a laptop to a projector or monitors",
-      "desk setup",
-      "more ports"
-    ],
-    "specs": {
-      "ports": "2x DisplayPort, HDMI, 3x USB-A, Ethernet",
-      "power": "100W"
-    },
-    "supplierId": "SUP-TECH",
-    "supplierName": "TechDistribucion S.L.",
-    "currency": "EUR",
-    "listPrice": 139.00,
-    "priceBreaks": [
-      {
-        "minQty": 5,
-        "unitPrice": 129.00
-      },
-      {
-        "minQty": 10,
-        "unitPrice": 119.00
-      }
-    ],
-    "leadTimeDays": 4,
-    "compatibleWith": [],
-    "attributes": {
-      "connection": "USB-C",
-      "externalDisplays": 2
-    }
-  },
-  {
-    "sku": "KBM-WL",
-    "categoryCode": "ACCESSORY",
-    "name": "Wireless Keyboard and Mouse Set",
-    "description": "Standard wireless keyboard and mouse.",
-    "suitableFor": [
-      "replacing a broken keyboard or mouse",
-      "desk setup"
-    ],
-    "specs": {
-      "layout": "Spanish ISO",
-      "connection": "2.4 GHz + Bluetooth"
-    },
-    "supplierId": "SUP-OFFICE",
-    "supplierName": "OfiSuministros S.A.",
-    "currency": "EUR",
-    "listPrice": 49.00,
-    "priceBreaks": [
-      {
-        "minQty": 10,
-        "unitPrice": 42.00
-      },
-      {
-        "minQty": 20,
-        "unitPrice": 39.00
-      }
-    ],
-    "leadTimeDays": 3,
-    "compatibleWith": [],
-    "attributes": {
-      "wireless": "yes",
-      "layout": "Spanish ISO"
-    }
-  },
-  {
-    "sku": "HS-ANC",
-    "categoryCode": "ACCESSORY",
-    "name": "Noise-Cancelling Headset",
-    "description": "Wireless headset certified for Teams and Zoom.",
-    "suitableFor": [
-      "calls and video meetings",
-      "open-plan office",
-      "customer calls"
-    ],
-    "specs": {
-      "type": "Over-ear, wireless",
-      "anc": "Yes",
-      "certified": "Teams, Zoom"
-    },
-    "supplierId": "SUP-OFFICE",
-    "supplierName": "OfiSuministros S.A.",
-    "currency": "EUR",
-    "listPrice": 119.00,
-    "priceBreaks": [
-      {
-        "minQty": 5,
-        "unitPrice": 109.00
-      },
-      {
-        "minQty": 10,
-        "unitPrice": 99.00
-      }
-    ],
-    "leadTimeDays": 3,
-    "compatibleWith": [],
-    "attributes": {
-      "wireless": "yes",
-      "noiseCancelling": "yes"
-    }
-  },
-  {
-    "sku": "TON-HP-58X",
-    "categoryCode": "TONER",
-    "name": "HP 58X High-Yield Black Toner",
-    "description": "Approx. 10,000 pages.",
-    "suitableFor": [
-      "HP LaserJet Pro M404 series"
-    ],
-    "specs": {
-      "color": "Black",
-      "yield": "10,000 pages"
-    },
-    "supplierId": "SUP-OFFICE",
-    "supplierName": "OfiSuministros S.A.",
-    "currency": "EUR",
-    "listPrice": 189.00,
-    "priceBreaks": [
-      {
-        "minQty": 5,
-        "unitPrice": 172.00
-      },
-      {
-        "minQty": 10,
-        "unitPrice": 159.00
-      }
-    ],
-    "leadTimeDays": 3,
-    "compatibleWith": [
-      "HP LaserJet Pro M404dn"
-    ],
-    "attributes": {
-      "color": "black"
-    }
-  },
-  {
-    "sku": "TON-BRO-TN2420",
-    "categoryCode": "TONER",
-    "name": "Brother TN-2420 Black Toner",
-    "description": "Approx. 3,000 pages.",
-    "suitableFor": [
-      "Brother HL-L2350 series"
-    ],
-    "specs": {
-      "color": "Black",
-      "yield": "3,000 pages"
-    },
-    "supplierId": "SUP-OFFICE",
-    "supplierName": "OfiSuministros S.A.",
-    "currency": "EUR",
-    "listPrice": 79.00,
-    "priceBreaks": [
-      {
-        "minQty": 5,
-        "unitPrice": 71.00
-      },
-      {
-        "minQty": 10,
-        "unitPrice": 65.00
-      }
-    ],
-    "leadTimeDays": 3,
-    "compatibleWith": [
-      "Brother HL-L2350DW"
-    ],
-    "attributes": {
-      "color": "black"
-    }
-  },
-  {
-    "sku": "TON-HP-415A-SET",
-    "categoryCode": "TONER",
-    "name": "HP 415A Toner Set (CMYK)",
-    "description": "Four-colour set: black, cyan, magenta, yellow.",
-    "suitableFor": [
-      "HP Color LaserJet Pro M454 series"
-    ],
-    "specs": {
-      "color": "CMYK set",
-      "yield": "2,400 pages each"
-    },
-    "supplierId": "SUP-OFFICE",
-    "supplierName": "OfiSuministros S.A.",
-    "currency": "EUR",
-    "listPrice": 459.00,
-    "priceBreaks": [
-      {
-        "minQty": 3,
-        "unitPrice": 429.00
-      },
-      {
-        "minQty": 6,
-        "unitPrice": 409.00
-      }
-    ],
-    "leadTimeDays": 4,
-    "compatibleWith": [
-      "HP Color LaserJet Pro M454dw"
-    ],
-    "attributes": {
-      "color": "colour (CMYK)"
-    }
+  "supplierId": "SUP-TECH",
+  "supplierName": "TechDistribucion S.L.",
+  "currency": "EUR",
+  "listPrice": 899.0,
+  "priceBreaks": [
+   {
+    "minQty": 5,
+    "unitPrice": 849.0
+   },
+   {
+    "minQty": 10,
+    "unitPrice": 809.0
+   },
+   {
+    "minQty": 20,
+    "unitPrice": 779.0
+   }
+  ],
+  "leadTimeDays": 5,
+  "compatibleWith": [],
+  "attributes": {
+   "os": "Windows 11",
+   "platform": "Intel x86",
+   "ramGb": 16,
+   "storageGb": 512,
+   "screenInches": 14,
+   "gpuType": "integrated",
+   "gpuComputeApi": "DirectML",
+   "metalSupported": false,
+   "gpuVramGb": 0
   }
+ },
+ {
+  "sku": "LAP-DEV",
+  "categoryCode": "LAPTOP",
+  "name": "Developer Laptop",
+  "description": "16-inch performance laptop for compiling code, containers and data work.",
+  "suitableFor": [
+   "software development",
+   "data analysis and data science",
+   "running virtual machines or containers",
+   "IT administration"
+  ],
+  "specs": {
+   "os": "Windows 11 Pro",
+   "cpu": "Intel Core Ultra 7",
+   "ram": "32 GB",
+   "storage": "1 TB SSD",
+   "display": "16\" QHD",
+   "gpu": "Integrated"
+  },
+  "supplierId": "SUP-TECH",
+  "supplierName": "TechDistribucion S.L.",
+  "currency": "EUR",
+  "listPrice": 1499.0,
+  "priceBreaks": [
+   {
+    "minQty": 5,
+    "unitPrice": 1429.0
+   },
+   {
+    "minQty": 10,
+    "unitPrice": 1369.0
+   }
+  ],
+  "leadTimeDays": 7,
+  "compatibleWith": [],
+  "attributes": {
+   "os": "Windows 11",
+   "platform": "Intel x86",
+   "ramGb": 32,
+   "storageGb": 1000,
+   "screenInches": 16,
+   "gpuType": "integrated",
+   "gpuComputeApi": "DirectML",
+   "metalSupported": false,
+   "gpuVramGb": 0
+  }
+ },
+ {
+  "sku": "LAP-DES",
+  "categoryCode": "LAPTOP",
+  "name": "Design Workstation Laptop",
+  "description": "16-inch colour-accurate workstation with dedicated graphics.",
+  "suitableFor": [
+   "graphic design",
+   "UI/UX design",
+   "photo editing",
+   "video editing",
+   "3D and rendering"
+  ],
+  "specs": {
+   "os": "Windows 11 Pro",
+   "cpu": "Intel Core Ultra 9",
+   "ram": "32 GB",
+   "storage": "1 TB SSD",
+   "display": "16\" 3.2K, 100% DCI-P3",
+   "gpu": "NVIDIA RTX 4060 8 GB"
+  },
+  "supplierId": "SUP-TECH",
+  "supplierName": "TechDistribucion S.L.",
+  "currency": "EUR",
+  "listPrice": 2199.0,
+  "priceBreaks": [
+   {
+    "minQty": 5,
+    "unitPrice": 2099.0
+   },
+   {
+    "minQty": 10,
+    "unitPrice": 1999.0
+   }
+  ],
+  "leadTimeDays": 10,
+  "compatibleWith": [],
+  "attributes": {
+   "os": "Windows 11",
+   "platform": "Intel x86",
+   "ramGb": 32,
+   "storageGb": 1000,
+   "screenInches": 16,
+   "gpuType": "dedicated",
+   "gpuComputeApi": "CUDA",
+   "metalSupported": false,
+   "gpuVramGb": 8
+  }
+ },
+ {
+  "sku": "MON-24-FHD",
+  "categoryCode": "ACCESSORY",
+  "name": "24\" Full HD Monitor",
+  "description": "Basic external monitor.",
+  "suitableFor": [
+   "general office work",
+   "a second screen",
+   "hot desks"
+  ],
+  "specs": {
+   "size": "24\"",
+   "resolution": "1920x1080",
+   "ports": "HDMI, DisplayPort"
+  },
+  "supplierId": "SUP-TECH",
+  "supplierName": "TechDistribucion S.L.",
+  "currency": "EUR",
+  "listPrice": 159.0,
+  "priceBreaks": [
+   {
+    "minQty": 5,
+    "unitPrice": 149.0
+   },
+   {
+    "minQty": 10,
+    "unitPrice": 139.0
+   }
+  ],
+  "leadTimeDays": 4,
+  "compatibleWith": [],
+  "attributes": {
+   "screenInches": 24,
+   "resolution": "FHD",
+   "usbC": "no",
+   "colorCalibrated": "no"
+  }
+ },
+ {
+  "sku": "MON-27-QHD",
+  "categoryCode": "ACCESSORY",
+  "name": "27\" QHD USB-C Monitor",
+  "description": "Larger monitor with single-cable USB-C connection.",
+  "suitableFor": [
+   "large spreadsheets",
+   "software development",
+   "working with many windows",
+   "a bigger screen"
+  ],
+  "specs": {
+   "size": "27\"",
+   "resolution": "2560x1440",
+   "ports": "USB-C 65W, HDMI"
+  },
+  "supplierId": "SUP-TECH",
+  "supplierName": "TechDistribucion S.L.",
+  "currency": "EUR",
+  "listPrice": 289.0,
+  "priceBreaks": [
+   {
+    "minQty": 5,
+    "unitPrice": 269.0
+   },
+   {
+    "minQty": 10,
+    "unitPrice": 255.0
+   }
+  ],
+  "leadTimeDays": 4,
+  "compatibleWith": [],
+  "attributes": {
+   "screenInches": 27,
+   "resolution": "QHD",
+   "usbC": "yes",
+   "colorCalibrated": "no"
+  }
+ },
+ {
+  "sku": "MON-27-4K",
+  "categoryCode": "ACCESSORY",
+  "name": "27\" 4K Colour-Calibrated Monitor",
+  "description": "Factory-calibrated monitor for colour-critical work.",
+  "suitableFor": [
+   "graphic design",
+   "photo and video editing",
+   "print work"
+  ],
+  "specs": {
+   "size": "27\"",
+   "resolution": "3840x2160",
+   "color": "99% Adobe RGB, factory calibrated"
+  },
+  "supplierId": "SUP-TECH",
+  "supplierName": "TechDistribucion S.L.",
+  "currency": "EUR",
+  "listPrice": 599.0,
+  "priceBreaks": [
+   {
+    "minQty": 5,
+    "unitPrice": 569.0
+   }
+  ],
+  "leadTimeDays": 6,
+  "compatibleWith": [],
+  "attributes": {
+   "screenInches": 27,
+   "resolution": "4K",
+   "usbC": "no",
+   "colorCalibrated": "yes"
+  }
+ },
+ {
+  "sku": "DOCK-USBC",
+  "categoryCode": "ACCESSORY",
+  "name": "USB-C Docking Station",
+  "description": "Connects a laptop to monitors, network and peripherals with one cable.",
+  "suitableFor": [
+   "connecting a laptop to a projector or monitors",
+   "desk setup",
+   "more ports"
+  ],
+  "specs": {
+   "ports": "2x DisplayPort, HDMI, 3x USB-A, Ethernet",
+   "power": "100W"
+  },
+  "supplierId": "SUP-TECH",
+  "supplierName": "TechDistribucion S.L.",
+  "currency": "EUR",
+  "listPrice": 139.0,
+  "priceBreaks": [
+   {
+    "minQty": 5,
+    "unitPrice": 129.0
+   },
+   {
+    "minQty": 10,
+    "unitPrice": 119.0
+   }
+  ],
+  "leadTimeDays": 4,
+  "compatibleWith": [],
+  "attributes": {
+   "connection": "USB-C",
+   "externalDisplays": 2
+  }
+ },
+ {
+  "sku": "KBM-WL",
+  "categoryCode": "ACCESSORY",
+  "name": "Wireless Keyboard and Mouse Set",
+  "description": "Standard wireless keyboard and mouse.",
+  "suitableFor": [
+   "replacing a broken keyboard or mouse",
+   "desk setup"
+  ],
+  "specs": {
+   "layout": "Spanish ISO",
+   "connection": "2.4 GHz + Bluetooth"
+  },
+  "supplierId": "SUP-OFFICE",
+  "supplierName": "OfiSuministros S.A.",
+  "currency": "EUR",
+  "listPrice": 49.0,
+  "priceBreaks": [
+   {
+    "minQty": 10,
+    "unitPrice": 42.0
+   },
+   {
+    "minQty": 20,
+    "unitPrice": 39.0
+   }
+  ],
+  "leadTimeDays": 3,
+  "compatibleWith": [],
+  "attributes": {
+   "wireless": "yes",
+   "layout": "Spanish ISO"
+  }
+ },
+ {
+  "sku": "HS-ANC",
+  "categoryCode": "ACCESSORY",
+  "name": "Noise-Cancelling Headset",
+  "description": "Wireless headset certified for Teams and Zoom.",
+  "suitableFor": [
+   "calls and video meetings",
+   "open-plan office",
+   "customer calls"
+  ],
+  "specs": {
+   "type": "Over-ear, wireless",
+   "anc": "Yes",
+   "certified": "Teams, Zoom"
+  },
+  "supplierId": "SUP-OFFICE",
+  "supplierName": "OfiSuministros S.A.",
+  "currency": "EUR",
+  "listPrice": 119.0,
+  "priceBreaks": [
+   {
+    "minQty": 5,
+    "unitPrice": 109.0
+   },
+   {
+    "minQty": 10,
+    "unitPrice": 99.0
+   }
+  ],
+  "leadTimeDays": 3,
+  "compatibleWith": [],
+  "attributes": {
+   "wireless": "yes",
+   "noiseCancelling": "yes"
+  }
+ },
+ {
+  "sku": "TON-HP-58X",
+  "categoryCode": "TONER",
+  "name": "HP 58X High-Yield Black Toner",
+  "description": "Approx. 10,000 pages.",
+  "suitableFor": [
+   "HP LaserJet Pro M404 series"
+  ],
+  "specs": {
+   "color": "Black",
+   "yield": "10,000 pages"
+  },
+  "supplierId": "SUP-OFFICE",
+  "supplierName": "OfiSuministros S.A.",
+  "currency": "EUR",
+  "listPrice": 189.0,
+  "priceBreaks": [
+   {
+    "minQty": 5,
+    "unitPrice": 172.0
+   },
+   {
+    "minQty": 10,
+    "unitPrice": 159.0
+   }
+  ],
+  "leadTimeDays": 3,
+  "compatibleWith": [
+   "HP LaserJet Pro M404dn"
+  ],
+  "attributes": {
+   "color": "black"
+  }
+ },
+ {
+  "sku": "TON-BRO-TN2420",
+  "categoryCode": "TONER",
+  "name": "Brother TN-2420 Black Toner",
+  "description": "Approx. 3,000 pages.",
+  "suitableFor": [
+   "Brother HL-L2350 series"
+  ],
+  "specs": {
+   "color": "Black",
+   "yield": "3,000 pages"
+  },
+  "supplierId": "SUP-OFFICE",
+  "supplierName": "OfiSuministros S.A.",
+  "currency": "EUR",
+  "listPrice": 79.0,
+  "priceBreaks": [
+   {
+    "minQty": 5,
+    "unitPrice": 71.0
+   },
+   {
+    "minQty": 10,
+    "unitPrice": 65.0
+   }
+  ],
+  "leadTimeDays": 3,
+  "compatibleWith": [
+   "Brother HL-L2350DW"
+  ],
+  "attributes": {
+   "color": "black"
+  }
+ },
+ {
+  "sku": "TON-HP-415A-SET",
+  "categoryCode": "TONER",
+  "name": "HP 415A Toner Set (CMYK)",
+  "description": "Four-colour set: black, cyan, magenta, yellow.",
+  "suitableFor": [
+   "HP Color LaserJet Pro M454 series"
+  ],
+  "specs": {
+   "color": "CMYK set",
+   "yield": "2,400 pages each"
+  },
+  "supplierId": "SUP-OFFICE",
+  "supplierName": "OfiSuministros S.A.",
+  "currency": "EUR",
+  "listPrice": 459.0,
+  "priceBreaks": [
+   {
+    "minQty": 3,
+    "unitPrice": 429.0
+   },
+   {
+    "minQty": 6,
+    "unitPrice": 409.0
+   }
+  ],
+  "leadTimeDays": 4,
+  "compatibleWith": [
+   "HP Color LaserJet Pro M454dw"
+  ],
+  "attributes": {
+   "color": "colour (CMYK)"
+  }
+ },
+ {
+  "sku": "CLD-AWS",
+  "categoryCode": "CLOUD",
+  "name": "Amazon Web Services account (company agreement)",
+  "description": "Account or subscription created by the cloud platform team inside the company's landing zone (single sign-on, security baseline, cost alerts), billed monthly to the cost centre.",
+  "suitableFor": [
+   "virtual servers",
+   "containers / Kubernetes",
+   "databases",
+   "storage",
+   "web hosting",
+   "test environments",
+   "backend services"
+  ],
+  "specs": {
+   "agreement": "Enterprise private pricing agreement (demo): committed annual spend, negotiated discount, consolidated monthly invoice",
+   "regions": "Spain: eu-south-2 · Other EU: eu-west-1 / eu-central-1 · Hong Kong: ap-east-1",
+   "billing": "Monthly, by consumption, charged back to the cost centre",
+   "provisioning": "Cloud platform team, about 2 working days after approval"
+  },
+  "attributes": {
+   "provider": "AWS",
+   "billing": "consumption",
+   "regions": [
+    "Spain",
+    "Other EU",
+    "Hong Kong"
+   ]
+  },
+  "supplierId": "SUP-AWS",
+  "supplierName": "Amazon Web Services EMEA SARL",
+  "currency": "EUR",
+  "listPrice": 0.0,
+  "priceBreaks": [],
+  "leadTimeDays": 2,
+  "compatibleWith": []
+ },
+ {
+  "sku": "CLD-AZURE",
+  "categoryCode": "CLOUD",
+  "name": "Microsoft Azure subscription (company agreement)",
+  "description": "Account or subscription created by the cloud platform team inside the company's landing zone (single sign-on, security baseline, cost alerts), billed monthly to the cost centre.",
+  "suitableFor": [
+   "virtual servers",
+   "containers / Kubernetes",
+   "databases",
+   "storage",
+   "web hosting",
+   "test environments",
+   "backend services"
+  ],
+  "specs": {
+   "agreement": "Enterprise agreement with Azure consumption commitment (demo): negotiated discount, consolidated monthly invoice",
+   "regions": "Spain: Spain Central · Other EU: West Europe / Germany West Central · Hong Kong: East Asia",
+   "billing": "Monthly, by consumption, charged back to the cost centre",
+   "provisioning": "Cloud platform team, about 2 working days after approval"
+  },
+  "attributes": {
+   "provider": "Azure",
+   "billing": "consumption",
+   "regions": [
+    "Spain",
+    "Other EU",
+    "Hong Kong"
+   ]
+  },
+  "supplierId": "SUP-MSFT",
+  "supplierName": "Microsoft Ireland Operations Ltd",
+  "currency": "EUR",
+  "listPrice": 0.0,
+  "priceBreaks": [],
+  "leadTimeDays": 2,
+  "compatibleWith": []
+ }
 ]

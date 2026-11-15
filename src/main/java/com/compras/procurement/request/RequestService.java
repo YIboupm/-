@@ -84,6 +84,147 @@ public class RequestService {
         return request;
     }
 
+    /** Puts the request in front of its approval chain (the first pending step decides next). */
+    public PurchaseRequest startApproval(String requestId, List<ApprovalStep> steps, String note) {
+        PurchaseRequest request = get(requestId);
+        request.setApprovals(steps);
+        request.moveTo(RequestStatus.PENDING_APPROVAL, Instant.now(clock), note);
+        request = repository.save(request);
+        announceCurrentStep(request);
+        return request;
+    }
+
+    /** Saves a decided step (and any step added after it) and announces whoever is next. */
+    public PurchaseRequest updateApprovals(String requestId, List<ApprovalStep> steps) {
+        PurchaseRequest request = get(requestId);
+        request.setApprovals(steps);
+        request = repository.save(request);
+        announceCurrentStep(request);
+        return request;
+    }
+
+    public PurchaseRequest recordBudgetCheck(String requestId, String verdict) {
+        PurchaseRequest request = get(requestId);
+        request.setBudgetCheck(verdict);
+        return repository.save(request);
+    }
+
+    /** The requester withdraws a request that has not been ordered yet; anything held is released. */
+    public PurchaseRequest cancel(String requestId, String employeeId, String reason) {
+        PurchaseRequest request = get(requestId);
+        if (employeeId == null || !employeeId.equals(request.getRequester().employeeId())) {
+            throw new IllegalStateException("Only the requester can cancel " + request.getNumber() + ".");
+        }
+        String why = reason == null || reason.isBlank() ? "Cancelled by the requester" : reason.trim();
+        request.moveTo(RequestStatus.CANCELLED, Instant.now(clock), why);
+        request = repository.save(request);
+        events.publishEvent(new Events.RequestCancelled(request.getId(), request.getNumber(),
+                request.getRequester().name(), why, Instant.now(clock)));
+        return request;
+    }
+
+    private void announceCurrentStep(PurchaseRequest request) {
+        ApprovalStep step = request.currentStep();
+        if (step != null && request.getStatus() == RequestStatus.PENDING_APPROVAL) {
+            events.publishEvent(new Events.ApprovalRequested(request.getId(), request.getNumber(), step.approverName(),
+                    step.role(), step.reason(), Instant.now(clock)));
+        }
+    }
+
+    public PurchaseRequest recordRoute(String requestId, String route, List<String> reasons,
+                                       BigDecimal policyValue, String splitNote) {
+        PurchaseRequest request = get(requestId);
+        request.recordRoute(route, reasons, policyValue, splitNote);
+        return repository.save(request);
+    }
+
+    /** Policy 7: the category manager decides how this is sourced. Nothing has been reserved yet. */
+    public PurchaseRequest toStrategicReview(String requestId, String source, List<String> reasons, String by) {
+        PurchaseRequest request = get(requestId);
+        Instant now = Instant.now(clock);
+        request.setStrategic(new StrategicCase(source, reasons, by, now, null, null, null, null));
+        request.recordSourcing(null); // a price found before the review is not an award
+        request.moveTo(RequestStatus.STRATEGIC_REVIEW, now, ("MANUAL".equals(source) ? "Sent to strategic review by "
+                + by : "Strategic purchase") + ": " + String.join("; ", reasons));
+        request = repository.save(request);
+        events.publishEvent(new Events.StrategicReviewRequested(request.getId(), request.getNumber(), source,
+                reasons, by, now));
+        return request;
+    }
+
+    /** The category manager's decision is recorded on the case; the caller moves the request on. */
+    public PurchaseRequest recordStrategicDecision(String requestId, String outcome, String by, String note) {
+        PurchaseRequest request = get(requestId);
+        if (request.getStatus() != RequestStatus.STRATEGIC_REVIEW || request.getStrategic() == null) {
+            throw new IllegalStateException(request.getNumber() + " is not in strategic review.");
+        }
+        request.setStrategic(request.getStrategic().decide(outcome, by, note, Instant.now(clock)));
+        return repository.save(request);
+    }
+
+    /** Strategic review: an existing agreement covers it; the employee requests it there. */
+    public PurchaseRequest redirect(String requestId, String note) {
+        PurchaseRequest request = get(requestId);
+        request.recordRejection(note);
+        request.moveTo(RequestStatus.REDIRECTED, Instant.now(clock), "Use an existing agreement: " + note);
+        request = repository.save(request);
+        events.publishEvent(new Events.RequestRejected(request.getId(), request.getNumber(), note, Instant.now(clock)));
+        return request;
+    }
+
+    /** A buyer accepts a special request, or the category manager decides to source a strategic one. */
+    public PurchaseRequest startSourcing(String requestId, String owner, String note) {
+        PurchaseRequest request = get(requestId);
+        request.setSourcingOwner(owner);
+        request.moveTo(RequestStatus.SOURCING, Instant.now(clock), note);
+        return repository.save(request);
+    }
+
+    public PurchaseRequest addQuote(String requestId, Quote quote) {
+        PurchaseRequest request = get(requestId);
+        if (request.getStatus() != RequestStatus.SOURCING) {
+            throw new IllegalStateException(request.getNumber() + " is not being sourced: accept it first.");
+        }
+        if (quote.supplierName() == null || quote.supplierName().isBlank() || quote.unitPrice() == null
+                || quote.unitPrice().signum() <= 0 || quote.quantity() < 1) {
+            throw new IllegalStateException("A quote needs a supplier, a quantity and a positive unit price.");
+        }
+        request.addQuote(new Quote(quote.supplierName().trim(), quote.description(), quote.quantity(),
+                quote.unitPrice(), Money.times(quote.unitPrice(), quote.quantity()), quote.reference(),
+                quote.note(), quote.addedBy(), Instant.now(clock)));
+        return repository.save(request);
+    }
+
+    /**
+     * Award one of the recorded quotes (policy 5: enough quotes for the value, or a written reason).
+     *
+     * @param quotesRequired from the policy for this award value
+     */
+    public PurchaseRequest award(String requestId, int quoteIndex, String description, String substitutionReason,
+                                 List<BuyerApproval.Confirmation> confirmations, String quoteException, String note,
+                                 java.util.function.ToIntFunction<BigDecimal> quotesRequiredFor) {
+        PurchaseRequest request = get(requestId);
+        if (request.getStatus() != RequestStatus.SOURCING) {
+            throw new IllegalStateException(request.getNumber() + " is not being sourced.");
+        }
+        List<Quote> quotes = request.getQuotes();
+        if (quoteIndex < 0 || quoteIndex >= quotes.size()) {
+            throw new IllegalStateException("Choose one of the recorded quotes.");
+        }
+        Quote q = quotes.get(quoteIndex);
+        int required = quotesRequiredFor.applyAsInt(q.total());
+        if (quotes.size() < required && (quoteException == null || quoteException.isBlank())) {
+            throw new IllegalStateException("Policy 5: an award of " + q.total() + " EUR needs " + required
+                    + " quotes; " + quotes.size() + " recorded. Add quotes, or say why fewer were possible.");
+        }
+        String noteText = quotes.size() < required ? ((note == null ? "" : note + " ") + "[Fewer quotes than policy: "
+                + quoteException.trim() + "]").trim() : note;
+        return buyerApprove(requestId, new BuyerApproval(description == null || description.isBlank()
+                ? (q.description() == null || q.description().isBlank() ? request.getChosenModel() : q.description())
+                : description, q.supplierName(), q.quantity(), q.unitPrice(), noteText, substitutionReason,
+                confirmations));
+    }
+
     /** Special requests are not auto-approved: a buyer sources and prices them first. */
     public PurchaseRequest routeToBuyer(String requestId, String note) {
         return transition(requestId, RequestStatus.BUYER_REVIEW, note);
@@ -98,8 +239,8 @@ public class RequestService {
             throw new IllegalStateException("Item, supplier, quantity and a positive unit price are required.");
         }
         PurchaseRequest request = get(requestId);
-        if (request.getStatus() != RequestStatus.BUYER_REVIEW) {
-            throw new IllegalStateException("Request " + request.getNumber() + " is not waiting for a buyer.");
+        if (request.getStatus() != RequestStatus.SOURCING) {
+            throw new IllegalStateException("Request " + request.getNumber() + " is not being sourced.");
         }
         // The bought item must meet every must-have the employee stated; the buyer confirms each one.
         java.util.Map<String, Boolean> answers = new java.util.HashMap<>();
@@ -137,12 +278,13 @@ public class RequestService {
         request.recordSourcing(new PurchaseRequest.SourcedItem(description, supplierName, quantity,
                 unitPrice, Money.times(unitPrice, quantity), a.note(), now, chosen, substituted,
                 substituted ? reason : null, confirmations));
-        String approvalNote = "Approved by buyer: " + description + " from " + supplierName
+        String sourcingNote = "Sourced by buyer: " + description + " from " + supplierName
                 + (substituted ? " (instead of " + chosen + ": " + reason + ")" : "");
-        request.moveTo(RequestStatus.APPROVED, now, approvalNote);
+        request.addNote(now, sourcingNote);
         request = repository.save(request);
-        events.publishEvent(new Events.RequestApproved(request.getId(), false, approvalNote, now));
-        return request;
+        // the price is known now: the spend goes through the approval matrix before anything is ordered
+        events.publishEvent(new Events.RequestSourced(request.getId(), now));
+        return get(request.getId());
     }
 
     public PurchaseRequest reject(String requestId, String reason) {
@@ -168,17 +310,24 @@ public class RequestService {
     }
 
     public List<PurchaseRequest> waitingForBuyer() {
-        return repository.findByStatusOrderBySubmittedAtAsc(RequestStatus.BUYER_REVIEW);
+        List<PurchaseRequest> list = new ArrayList<>(repository.findByStatusOrderBySubmittedAtAsc(RequestStatus.BUYER_REVIEW));
+        list.addAll(repository.findByStatusOrderBySubmittedAtAsc(RequestStatus.SOURCING));
+        return list;
+    }
+
+    public List<PurchaseRequest> inStrategicReview() {
+        return repository.findByStatusOrderBySubmittedAtAsc(RequestStatus.STRATEGIC_REVIEW);
     }
 
     public PurchaseRequest markPooled(String requestId) {
         return transition(requestId, RequestStatus.POOLED, "Lines added to the demand pool");
     }
 
-    public PurchaseRequest markOrdered(String requestId, List<String> orderNumbers) {
+    public PurchaseRequest markOrdered(String requestId, List<String> orderNumbers, BigDecimal amount) {
         PurchaseRequest request = transition(requestId, RequestStatus.ORDERED,
                 "On purchase order(s) " + String.join(", ", orderNumbers));
-        events.publishEvent(new Events.RequestOrdered(requestId, orderNumbers, Instant.now(clock)));
+        events.publishEvent(new Events.RequestOrdered(requestId, request.getNumber(), request.chargeDepartment(),
+                orderNumbers, amount, Instant.now(clock)));
         return request;
     }
 

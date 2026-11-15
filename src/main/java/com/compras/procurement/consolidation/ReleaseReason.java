@@ -11,5 +11,7 @@ public enum ReleaseReason {
     /** Waiting longer would miss the earliest needed-by date (lead time + buffer). */
     DEADLINE,
     /** A buyer sourced a non-standard item; it is ordered on its own, outside the pool. */
-    SPECIAL_REQUEST
+    SPECIAL_REQUEST,
+    /** A call-off under a framework agreement (cloud): provisioned per request, never pooled. */
+    FRAMEWORK_CALL_OFF
 }

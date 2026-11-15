@@ -281,5 +281,116 @@
         "description": "True only if the employee explicitly says it is urgent."
       }
     ]
+  },
+  {
+    "code": "CLOUD",
+    "name": "Cloud servers and hosting",
+    "description": "Cloud infrastructure (virtual servers, containers, databases, storage) under the company's enterprise agreements with its approved cloud providers. The cloud platform team creates the account or subscription; usage is billed monthly to the cost centre. Other providers are not covered: they need a separate sourcing decision by procurement.",
+    "examples": [
+      "we need a server for our backend",
+      "rent cloud servers",
+      "a database in the cloud",
+      "host our website",
+      "more compute for a test environment"
+    ],
+    "resolution": "CONSUMPTION",
+    "assetType": null,
+    "intakeEnabled": true,
+    "fields": [
+      {
+        "name": "item",
+        "label": "Cloud provider (agreement)",
+        "type": "SKU",
+        "required": true,
+        "description": "The approved provider under the company's agreement. Only these two are standard."
+      },
+      {
+        "name": "region",
+        "label": "Region",
+        "type": "ENUM",
+        "required": true,
+        "allowedValues": [
+          "Spain",
+          "Other EU",
+          "Hong Kong"
+        ],
+        "description": "Where the workload runs. Both providers offer all three. Outside the EU, data protection must approve unless the data is Public."
+      },
+      {
+        "name": "workload",
+        "label": "Workload",
+        "type": "TEXT",
+        "required": true,
+        "description": "What will run there and the expected size (e.g. '2 VMs, 32 vCPU / 64 GB each, container cluster')."
+      },
+      {
+        "name": "monthlyEstimate",
+        "label": "Estimated monthly spend (EUR)",
+        "type": "INTEGER",
+        "required": true,
+        "min": 1,
+        "max": 200000,
+        "description": "Estimated monthly cost in EUR, for budgeting. Ask the employee; if they do not know, you may estimate it from the provider's official price page or calculator (cite it) and tell them it is an estimate the cloud team will check."
+      },
+      {
+        "name": "termMonths",
+        "label": "Term (months)",
+        "type": "INTEGER",
+        "required": true,
+        "min": 1,
+        "max": 36,
+        "description": "How long the environment is needed, in months."
+      },
+      {
+        "name": "dataClassification",
+        "label": "Data classification",
+        "type": "ENUM",
+        "required": true,
+        "allowedValues": [
+          "Public",
+          "Internal",
+          "Confidential",
+          "Restricted"
+        ],
+        "description": "The most sensitive data the workload will store or process. Public: published anyway. Internal: ordinary business data. Confidential: customer or personal data. Restricted: special-category personal data, credentials, payment data."
+      },
+      {
+        "name": "technicalOwner",
+        "label": "Technical owner",
+        "type": "TEXT",
+        "required": true,
+        "description": "Person responsible for the environment's configuration and costs."
+      },
+      {
+        "name": "neededBy",
+        "label": "Needed by",
+        "type": "DATE",
+        "required": true,
+        "description": "Date the environment must be available."
+      },
+      {
+        "name": "chargeTo",
+        "label": "Charge to department",
+        "type": "DEPARTMENT",
+        "required": true,
+        "defaultFrom": "employee.department",
+        "description": "Department whose cost centre pays the monthly bill."
+      },
+      {
+        "name": "justification",
+        "label": "Business reason",
+        "type": "TEXT",
+        "required": true,
+        "description": "The business reason in the employee's own words. Do not shorten or paraphrase."
+      },
+      {
+        "name": "urgent",
+        "label": "Urgent",
+        "type": "BOOLEAN",
+        "required": false,
+        "defaultFrom": "const:false",
+        "description": "True only if the employee explicitly says it is urgent or blocking work."
+      }
+    ]
   }
 ]

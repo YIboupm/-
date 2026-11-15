@@ -6,6 +6,8 @@ import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.List;
 
 /**
@@ -38,6 +40,8 @@ public class Conversation {
     private List<AgentQuestion> pendingQuestions = new ArrayList<>();
     private Proposal proposal;
     private List<WebSource> sources = new ArrayList<>();
+    /** Budget verdicts already obtained, by "department|amount" (verdicts only: no budget figures). */
+    private Map<String, String> budgetChecks = new LinkedHashMap<>();
     private String requestId;
     private Instant createdAt;
     private Instant updatedAt;
@@ -116,6 +120,15 @@ public class Conversation {
     public String getPendingToolCallId() { return pendingToolCallId; }
     public List<AgentQuestion> getPendingQuestions() { return pendingQuestions == null ? List.of() : pendingQuestions; }
     public Proposal getProposal() { return proposal; }
+    public Map<String, String> getBudgetChecks() { return budgetChecks == null ? Map.of() : budgetChecks; }
+
+    public void recordBudgetCheck(String key, String verdict) {
+        if (budgetChecks == null) {
+            budgetChecks = new LinkedHashMap<>();
+        }
+        budgetChecks.put(key, verdict);
+    }
+
     public List<WebSource> getSources() { return sources == null ? List.of() : sources; }
 
     public void addSource(String url, String title, String via, Instant at) {

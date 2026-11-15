@@ -9,13 +9,7 @@
 <body>
 <header>
   <div class="brand">Procurement<span>Hub</span></div>
-  <nav>
-    <a href="index.html">New request</a>
-    <a href="my-requests.html" class="active">My requests</a>
-    <a href="pool.html">Pool &amp; orders</a>
-    <a href="buyer.html">Buyer desk</a>
-    <a href="audit.html">Audit log</a>
-  </nav>
+  <nav></nav>
   <div class="who">Signed in as <select id="employee"></select></div>
 </header>
 
@@ -27,6 +21,7 @@
 </main>
 
 <script src="common.js"></script>
+<script>renderNav('my-requests.html');</script>
 <script>
   const $ = id => document.getElementById(id);
 
@@ -37,6 +32,7 @@
     $('count').textContent = `· ${list.length}`;
     $('list').innerHTML = list.length ? myRequestsHtml(list)
       : '<div class="placeholder">No requests yet. Start one under "New request".</div>';
+    bindCancel($('list'), id, load);
   }
 
   async function init() {

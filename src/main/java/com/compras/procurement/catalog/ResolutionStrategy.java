@@ -7,5 +7,10 @@ public enum ResolutionStrategy {
     /** The SKU follows from an existing asset (toner that fits a given printer). */
     ASSET_COMPATIBILITY,
     /** A role is expanded into a standard bundle of SKUs (onboarding kit). */
-    ROLE_KIT
+    ROLE_KIT,
+    /**
+     * A call-off under a framework agreement billed by consumption (cloud): the line is the estimated monthly
+     * spend times the term in months.
+     */
+    CONSUMPTION
 }

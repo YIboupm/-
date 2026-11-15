@@ -185,7 +185,7 @@ public class AgentIntakeService {
                         p.requirements(), p.considered(), List.of()));
                 requestId = r.getId();
                 PurchaseRequest current = requests.get(r.getId());
-                message = "Submitted as " + current.getNumber() + " (status " + current.getStatus() + ").";
+                message = "Submitted as " + current.getNumber() + ". " + nextStep(current);
                 status = Conversation.Status.SUBMITTED;
             }
             case SPECIAL -> {
@@ -200,9 +200,10 @@ public class AgentIntakeService {
                         p.title(), p.requirements(), p.considered(), p.candidates()));
                 requestId = r.getId();
                 PurchaseRequest current = requests.get(r.getId());
-                message = "Sent to procurement as special request " + current.getNumber() + ". A buyer will source "
-                        + "and price it; procurement's service level is a reply within "
-                        + properties.buyerResponseDays() + " working days.";
+                message = "Submitted as special request " + current.getNumber() + ". " + nextStep(current)
+                        + " Then a buyer sources and prices it (procurement's service level: a reply within "
+                        + properties.buyerResponseDays() + " working days), and the price goes through approval "
+                        + "and a budget check before anything is ordered.";
                 status = Conversation.Status.SUBMITTED;
             }
             default -> throw new IllegalStateException("Unknown proposal type");
@@ -308,6 +309,36 @@ public class AgentIntakeService {
                 + "or I can prepare a request for a buyer.", now());
         c.setStatus(Conversation.Status.ACTIVE);
         return view(conversations.save(c));
+    }
+
+    /** What happens next, for the employee: who approves, and the budget verdict (never an amount). */
+    private static String nextStep(PurchaseRequest r) {
+        StringBuilder sb = new StringBuilder();
+        switch (r.getStatus()) {
+            case PENDING_APPROVAL -> {
+                List<String> who = r.getApprovals().stream().filter(s -> s.isPending())
+                        .map(s -> s.approverName() + " (" + s.reason() + ")").toList();
+                sb.append("Waiting for approval by ").append(String.join(", then ", who)).append(".");
+            }
+            case POOLED -> sb.append("Approved and queued for the next consolidated order.");
+            case ORDERED -> sb.append("Approved and ordered.");
+            case APPROVED -> sb.append("Approved.");
+            case BUYER_REVIEW -> sb.append("With a buyer.");
+            case STRATEGIC_REVIEW -> sb.append("This is a strategic purchase (")
+                    .append(String.join("; ", r.getStrategic() == null ? r.getRouteReasons() : r.getStrategic().reasons()))
+                    .append("). Per policy 7 the category manager decides how it is sourced; the assistant does not "
+                            + "recommend suppliers for it.");
+            default -> sb.append("Status: ").append(r.getStatus()).append(".");
+        }
+        if (r.getSplitNote() != null) {
+            sb.append(" ").append(r.getSplitNote()).append(".");
+        }
+        if ("OVER_BUDGET".equals(r.getBudgetCheck())) {
+            sb.append(" It is over your department's budget for this quarter, so the Finance Controller decides.");
+        } else if ("WITHIN_BUDGET".equals(r.getBudgetCheck())) {
+            sb.append(" Within your department's budget.");
+        }
+        return sb.toString();
     }
 
     // ------------------------------------------------------------------ helpers

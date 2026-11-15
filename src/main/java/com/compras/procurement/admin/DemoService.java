@@ -63,6 +63,8 @@ public class DemoService {
         mongo.remove(new Query(), DemandLine.class);
         mongo.remove(new Query(), ConsolidatedOrder.class);
         mongo.remove(new Query(), AuditEntry.class);
+        mongo.remove(new Query(), com.compras.procurement.budget.BudgetEntry.class);
+        mongo.remove(new Query(), com.compras.procurement.budget.BudgetAccount.class);
         mongo.remove(new Query(), SequenceService.Counter.class);
         seed.loadReferenceData();
     }

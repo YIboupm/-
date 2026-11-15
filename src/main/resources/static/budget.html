@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Procurement Hub · Budget</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="brand">Procurement<span>Hub</span></div>
+  <nav></nav>
+  <div class="who">Signed in as <select id="staff"></select></div>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>Budget pool <span class="muted small" id="head"></span></h2>
+    <div class="body">
+      <div class="legend">
+        <span><i style="background:#3b4a63"></i>Spent</span><span><i style="background:#5b7bd5"></i>Committed (ordered)</span>
+        <span><i style="background:#e0a43a"></i>Reserved (approved, not ordered)</span><span><i style="background:#eef0f3"></i>Available</span>
+        <span><i style="background:var(--err)"></i>Over budget</span>
+      </div>
+      <p class="muted small">Restricted: finance sees every department, budget holders their own. Requesters and the AI assistant only ever get "within / over budget".</p>
+      <div id="list"><div class="placeholder">Loading…</div></div>
+    </div>
+  </section>
+</main>
+
+<script src="common.js"></script>
+<script>renderNav('budget.html');</script>
+<script>
+  const $ = id => document.getElementById(id);
+  const TYPE = { RESERVE: 'Reserved', COMMIT: 'Ordered', RELEASE: 'Released' };
+
+  function dept(d) {
+    const alloc = Number(d.allocated) || 1;
+    const pct = v => Math.max(0, Math.min(100, Number(v) / alloc * 100));
+    const over = Math.max(0, -Number(d.available));
+    const rows = d.ledger.slice().reverse().map(m => `<tr>
+        <td>${esc((m.at || '').slice(0, 16).replace('T', ' '))}</td><td>${esc(m.requestNumber)}</td>
+        <td>${TYPE[m.type] || m.type}${m.overBudget ? ' <span class="check NOT_MET">over budget</span>' : ''}</td>
+        <td class="num">${money(m.amount)}</td>
+        <td class="num">${Number(m.released) > 0 ? money(m.released) + ' back' : Number(m.released) < 0 ? money(-m.released) + ' extra' : ''}</td>
+        <td>${esc(m.actor)}</td><td class="muted small">${esc(m.note)}</td></tr>`).join('');
+    return `<div class="dept">
+      <div class="dept-head"><b>${esc(d.department)} <span class="muted small">${esc(d.costCenter)}</span></b>
+        <span>${money(d.available)} available of ${money(d.allocated)}</span></div>
+      <div class="bar"><span class="spent" style="width:${pct(d.spent)}%"></span><span class="committed" style="width:${pct(d.committed)}%"></span>
+        <span class="reserved" style="width:${pct(d.reserved)}%"></span>${over ? `<span class="over" style="width:${pct(over)}%"></span>` : ''}</div>
+      <div class="figs"><div>Allocated<b>${money(d.allocated)}</b></div><div>Spent<b>${money(d.spent)}</b></div>
+        <div>Committed<b>${money(d.committed)}</b></div><div>Reserved<b>${money(d.reserved)}</b></div>
+        <div>Available<b style="color:${Number(d.available) < 0 ? 'var(--err)' : 'inherit'}">${money(d.available)}</b></div></div>
+      ${rows ? `<details style="margin-top:8px"><summary class="muted small">Ledger (${d.ledger.length})</summary>
+        <table><thead><tr><th>When</th><th>Request</th><th>Movement</th><th class="num">Amount</th><th class="num">Difference</th><th>By</th><th>Note</th></tr></thead><tbody>${rows}</tbody></table></details>` : ''}
+    </div>`;
+  }
+
+  async function load() {
+    const id = $('staff').value;
+    history.replaceState(null, '', '?staff=' + encodeURIComponent(id));
+    try {
+      const o = await api('GET', '/api/budgets', null, id);
+      $('head').textContent = `· ${o.period}` + (o.pool ? ` · company pool ${money(o.pool)}` : ` · ${o.role}`);
+      $('list').innerHTML = o.departments.map(dept).join('');
+    } catch (e) {
+      $('head').textContent = '';
+      $('list').innerHTML = `<div class="placeholder">${esc(e.message)}</div>`;
+    }
+  }
+
+  async function init() {
+    const staff = await api('GET', '/api/staff');
+    const wanted = new URLSearchParams(location.search).get('staff') || 'S20';
+    $('staff').innerHTML = staff.map(m => `<option value="${esc(m.id)}" ${m.id === wanted ? 'selected' : ''}>${esc(m.name)} · ${esc(m.title)}</option>`).join('');
+    $('staff').addEventListener('change', load);
+    await load();
+  }
+  init().catch(e => toast('Error: ' + e.message));
+</script>
+</body>
+</html>

@@ -28,6 +28,7 @@ llm:
 # ---- Intake (request capture) ----
 intake:
   max-clarification-rounds: 3          # (legacy, unused by the agent)
+  max-budget-checks: 3                 # budget verdicts per conversation (each yes/no leaks a bit: probing is capped)
   max-agent-steps: 14                  # model steps allowed per employee message (agent loop guard)
   budget-approval-threshold: 5000      # requests above this total need director approval (warning)
   currency: EUR
@@ -35,8 +36,24 @@ intake:
 
 # ---- Downstream procurement ----
 procurement:
-  approval:
-    auto-approve: true                 # demo stub: approve every submitted request immediately
+  approval:                            # the approval matrix (company policy)
+    auto-approve-up-to: 1000           # catalog items up to this total, within budget: no human approval
+    manager-up-to: 5000                # line manager alone up to this; above: + department head + finance controller
+    cfo-above: 25000                   # above this: + CFO
+    it-categories: [LAPTOP, ONBOARDING_KIT]   # IT asset manager also approves these
+  policy:                              # procurement policy (docs: the policy document, appendix)
+    single-quote-up-to: 3000           # policy 5: up to this, one quote or a public price list
+    strategic-above: 25000             # policy 5/7: above this contract value the category manager decides
+    max-term-months: 12                # policy 7: a new supplier/service for longer is strategic
+    split-window-days: 30              # policy 2: related requests in this window are added up
+  budget:                              # quarterly budget pool, EUR 100,000 split across departments
+    allocations:
+      "[Engineering]": 30000
+      "[Marketing]": 20000
+      "[Operations]": 15000
+      "[Sales]": 15000
+      "[IT]": 12000
+      "[Finance]": 8000
   consolidation:
     window-day: TUESDAY                # weekly consolidation window
     safety-buffer-days: 2              # extra days on top of supplier lead time

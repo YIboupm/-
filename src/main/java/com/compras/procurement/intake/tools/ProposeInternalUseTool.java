@@ -102,7 +102,7 @@ public class ProposeInternalUseTool implements AgentTool {
         }
         Proposal proposal = new Proposal(Proposal.Type.INTERNAL_USE, "Use " + resource.name(), usage, null, null,
                 null, Map.of(), requirements, checks, List.of(), null, properties.currency(), List.of(), List.of(),
-                resource, avoided, List.of(), List.of());
+                resource, avoided, List.of(), List.of(), null);
         return ToolResult.propose(proposal, "propose_internal_use · " + resource.name());
     }
 }

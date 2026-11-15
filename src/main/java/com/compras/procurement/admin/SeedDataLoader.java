@@ -56,6 +56,7 @@ public class SeedDataLoader implements ApplicationRunner {
         load("seed/employees.json", Employee.class);
         load("seed/assets.json", Asset.class);
         load("seed/departments.json", Department.class);
+        load("seed/staff.json", com.compras.procurement.approval.StaffMember.class);
         log.info("Reference data loaded from classpath:seed/");
     }
 

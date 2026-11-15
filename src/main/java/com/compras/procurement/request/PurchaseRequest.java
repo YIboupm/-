@@ -97,6 +97,19 @@ public class PurchaseRequest {
     private List<com.compras.procurement.matching.Requirement> requirements = new ArrayList<>();
     private List<AlternativeConsidered> alternativesConsidered = new ArrayList<>();
     private List<SuggestedModel> suggestedModels = new ArrayList<>();
+    private List<ApprovalStep> approvals = new ArrayList<>();
+    /** Policy route (STANDARD / BUYER_SOURCED / STRATEGIC) and why. */
+    private String route;
+    private List<String> routeReasons = new ArrayList<>();
+    /** Set when the split check (policy 2) added up related requests. */
+    private String splitNote;
+    private java.math.BigDecimal policyValue;
+    private StrategicCase strategic;
+    private List<Quote> quotes = new ArrayList<>();
+    /** Who sources it: BUYER or CATEGORY_MANAGER. */
+    private String sourcingOwner;
+    /** WITHIN_BUDGET / OVER_BUDGET at the last check: a verdict only, never an amount. */
+    private String budgetCheck;
     @Indexed
     private RequestStatus status;
     private List<StatusChange> history = new ArrayList<>();
@@ -146,6 +159,58 @@ public class PurchaseRequest {
         this.alternativesConsidered = alternativesConsidered == null ? List.of() : alternativesConsidered;
     }
 
+    public String getRoute() { return route; }
+    public List<String> getRouteReasons() { return routeReasons == null ? List.of() : routeReasons; }
+    public String getSplitNote() { return splitNote; }
+    public java.math.BigDecimal getPolicyValue() { return policyValue; }
+    public StrategicCase getStrategic() { return strategic; }
+    public List<Quote> getQuotes() { return quotes == null ? List.of() : quotes; }
+    public String getSourcingOwner() { return sourcingOwner; }
+
+    public void recordRoute(String route, List<String> reasons, java.math.BigDecimal policyValue, String splitNote) {
+        this.route = route;
+        this.routeReasons = reasons == null ? List.of() : new ArrayList<>(reasons);
+        this.policyValue = policyValue;
+        this.splitNote = splitNote;
+    }
+
+    public void setStrategic(StrategicCase strategic) { this.strategic = strategic; }
+
+    public void setSourcingOwner(String owner) { this.sourcingOwner = owner; }
+
+    public void addQuote(Quote quote) {
+        if (quotes == null) {
+            quotes = new ArrayList<>();
+        }
+        quotes.add(quote);
+    }
+
+    /** Value the approval matrix and the policy look at: the split-check total when larger. */
+    public java.math.BigDecimal matrixValue() {
+        java.math.BigDecimal own = amount() == null ? java.math.BigDecimal.ZERO : amount();
+        return policyValue != null && policyValue.compareTo(own) > 0 ? policyValue : own;
+    }
+
+    public List<ApprovalStep> getApprovals() { return approvals == null ? List.of() : approvals; }
+    public void setApprovals(List<ApprovalStep> approvals) { this.approvals = new ArrayList<>(approvals); }
+    public String getBudgetCheck() { return budgetCheck; }
+    public void setBudgetCheck(String budgetCheck) { this.budgetCheck = budgetCheck; }
+
+    /** The step someone has to decide now, if any. */
+    public ApprovalStep currentStep() {
+        return getApprovals().stream().filter(ApprovalStep::isPending).findFirst().orElse(null);
+    }
+
+    /** What this request costs: the buyer's price once sourced, otherwise the catalog estimate. */
+    public BigDecimal amount() {
+        return sourced != null ? sourced.total() : estimatedTotal;
+    }
+
+    /** The department whose budget pays. */
+    public String chargeDepartment() {
+        return chargeTo != null && chargeTo.department() != null ? chargeTo.department() : requester.department();
+    }
+
     public String getTitle() { return title; }
     public List<com.compras.procurement.matching.Requirement> getRequirements() { return requirements; }
     public List<AlternativeConsidered> getAlternativesConsidered() { return alternativesConsidered; }
@@ -160,6 +225,11 @@ public class PurchaseRequest {
         }
         history.add(new StatusChange(status, target, at, note));
         status = target;
+    }
+
+    /** A history note without a status change (e.g. the buyer priced the request). */
+    public void addNote(Instant at, String note) {
+        history.add(new StatusChange(status, status, at, note));
     }
 
     public void recordSourcing(SourcedItem item) {

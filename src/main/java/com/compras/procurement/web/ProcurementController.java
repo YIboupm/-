@@ -130,4 +130,14 @@ public class ProcurementController {
     public Map<String, Object> today() {
         return Map.of("today", LocalDate.now(clock).toString());
     }
+
+    public record CancelRequest(String employeeId, String reason) {
+    }
+
+    /** The requester withdraws a request that is not ordered yet; any budget held is released. */
+    @org.springframework.web.bind.annotation.PostMapping("/requests/{id}/cancel")
+    public PurchaseRequest cancel(@org.springframework.web.bind.annotation.PathVariable String id,
+                                  @org.springframework.web.bind.annotation.RequestBody CancelRequest body) {
+        return requests.cancel(id, body.employeeId(), body.reason());
+    }
 }

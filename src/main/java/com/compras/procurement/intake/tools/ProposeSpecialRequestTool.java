@@ -8,6 +8,7 @@ import com.compras.procurement.intake.IntakeProperties;
 import com.compras.procurement.intake.Proposal;
 import com.compras.procurement.intake.agent.AgentTool;
 import com.compras.procurement.intake.agent.ArgParser;
+import com.compras.procurement.budget.BudgetVerdict;
 import com.compras.procurement.intake.agent.ReuseGuard;
 import com.compras.procurement.intake.agent.Schemas;
 import com.compras.procurement.intake.agent.ToolContext;
@@ -43,7 +44,8 @@ public class ProposeSpecialRequestTool implements AgentTool {
 
     public ProposeSpecialRequestTool(CatalogService catalog, EmployeeContextService employees,
                                      RequirementMatcher matcher, IntakeProperties properties, ReuseGuard reuse,
-                                     WebResearch research) {
+                                     WebResearch research, com.compras.procurement.policy.PolicyRouter router) {
+        this.router = router;
         this.reuse = reuse;
         this.research = research;
         this.catalog = catalog;
@@ -51,6 +53,8 @@ public class ProposeSpecialRequestTool implements AgentTool {
         this.matcher = matcher;
         this.properties = properties;
     }
+
+    private final com.compras.procurement.policy.PolicyRouter router;
 
     @Override
     public String name() {
@@ -75,12 +79,19 @@ public class ProposeSpecialRequestTool implements AgentTool {
                 "needed_by", Schemas.string("yyyy-MM-dd, only if the employee gave or confirmed it."),
                 "charge_to", Schemas.string("Department name or cost centre that pays; defaults to the requester's "
                         + "department."),
-                "category", Schemas.string("Optional closest category code."),
+                "category", Schemas.string("Category code only if it really is that kind of thing (e.g. CLOUD for "
+                        + "a cloud provider outside the company agreements); otherwise omit it."),
                 "reference_sku", Schemas.string("Optional closest catalog SKU, for the buyer's reference."),
                 "requirements", Schemas.requirements(),
                 "reasons", Schemas.array(Schemas.string("One reason."),
                         "Why the standard catalog and the company resources do not fit."),
                 "considered", Schemas.considered(),
+                "term_months", Schemas.integer("For a service or subscription: how many months it runs. Omit for a "
+                        + "one-off purchase."),
+                "data_classification", Schemas.enumOf("Most sensitive data the supplier will handle, if any.",
+                        "Public", "Internal", "Confidential", "Restricted"),
+                "sole_source", Schemas.anyValue("true only if the employee says just one supplier can provide it."),
+                "sole_source_reason", Schemas.string("Why only that supplier (required with sole_source)."),
                 "candidates", Schemas.array(Schemas.object(Schemas.props(
                         "model", Schemas.string("Product, e.g. \"Mac Studio (M4 Max)\"."),
                         "configuration", Schemas.string("Configuration that meets the must-haves."),
@@ -149,7 +160,39 @@ public class ProposeSpecialRequestTool implements AgentTool {
         if (reasons.isEmpty()) {
             problems.add("'reasons' must say why the standard catalog and the company resources do not fit.");
         }
-        List<SuggestedModel> candidates = candidates(args.path("candidates"), context, problems);
+        // Policy attributes the routing needs (policy 7)
+        Map<String, Object> policyAttributes = new LinkedHashMap<>();
+        int term = args.path("term_months").asInt(0);
+        if (term > 0) {
+            policyAttributes.put("termMonths", term);
+        }
+        String data = ArgParser.text(args, "data_classification");
+        if (data != null) {
+            policyAttributes.put("dataClassification", data);
+        }
+        boolean soleSource = args.path("sole_source").asBoolean(false)
+                || "true".equalsIgnoreCase(args.path("sole_source").asText());
+        if (soleSource) {
+            String why = ArgParser.text(args, "sole_source_reason");
+            if (why == null) {
+                problems.add("'sole_source_reason' is required with sole_source.");
+            }
+            policyAttributes.put("soleSource", true);
+            policyAttributes.put("soleSourceReason", why);
+        }
+        // Strategic purchases (policy 7, 11): the category manager decides how to source them. The assistant records
+        // the need; it does not research or recommend suppliers, so candidates are refused here, by the program.
+        boolean framework = category != null
+                && category.resolution() == com.compras.procurement.catalog.ResolutionStrategy.CONSUMPTION;
+        com.compras.procurement.policy.RouteDecision route = router.route(new com.compras.procurement.policy
+                .PolicyRouter.Input(true, framework, null, policyAttributes));
+        if (route.strategic() && args.path("candidates").isArray() && !args.path("candidates").isEmpty()) {
+            problems.add("This is a strategic purchase (" + String.join("; ", route.reasons()) + "): the category "
+                    + "manager decides how to source it. Remove 'candidates': record the need and the reasons only, "
+                    + "do not research or recommend suppliers.");
+        }
+        List<SuggestedModel> candidates = route.strategic() ? List.of()
+                : candidates(args.path("candidates"), context, problems);
         Map<String, String> considered = ReuseGuard.considered(args.path("considered"), problems);
         if (problems.isEmpty()) {
             reuse.check(requirements, considered, "", null, problems);
@@ -171,11 +214,17 @@ public class ProposeSpecialRequestTool implements AgentTool {
         fields.put("chargeTo", department);
         fields.put("deliverySite", context.requester().employee().site());
         fields.put("justification", description);
+        fields.putAll(policyAttributes);
         BigDecimal total = lines.isEmpty() ? null : lines.get(0).lineTotal();
+        List<com.compras.procurement.rules.RuleViolation> notes = route.strategic()
+                ? List.of(com.compras.procurement.rules.RuleViolation.warning("strategic", "Strategic purchase: "
+                        + String.join("; ", route.reasons()) + ". The category manager decides how it is sourced; "
+                        + "the assistant does not recommend suppliers for it."))
+                : List.of();
         Proposal proposal = new Proposal(Proposal.Type.SPECIAL, title, description, null,
                 category == null ? null : category.code(), category == null ? "Non-catalog request" : category.name(),
-                fields, requirements, checks, lines, total, properties.currency(), List.of(), reasons, null, null,
-                reuse.describe(considered), candidates);
+                fields, requirements, checks, lines, total, properties.currency(), notes, reasons, null, null,
+                reuse.describe(considered), candidates, BudgetVerdict.NOT_DISCLOSED.name());
         return ToolResult.propose(proposal, "propose_special_request · " + title);
     }
 

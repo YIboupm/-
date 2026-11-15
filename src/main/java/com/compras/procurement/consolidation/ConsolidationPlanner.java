@@ -90,6 +90,7 @@ public class ConsolidationPlanner {
                     case BEST_PRICE_REACHED -> "best price tier reached";
                     case DEADLINE -> "latest order date " + latest + " reached";
                     case SPECIAL_REQUEST -> "special request sourced by a buyer";
+                    case FRAMEWORK_CALL_OFF -> "call-off under a framework agreement";
                 });
             }
             return "Release now: " + String.join(", ", parts) + ".";

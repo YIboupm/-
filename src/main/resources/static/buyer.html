@@ -10,29 +10,32 @@
 <header>
   <div class="brand">Procurement<span>Hub</span></div>
   <nav></nav>
+  <div class="who">Signed in as <select id="staff"></select></div>
 </header>
 
-<main>
-  <section class="panel">
-    <h2>Buyer desk: accept, collect quotes, award <span class="muted small" id="count"></span></h2>
+<main style="display:block">
+  <section class="panel" style="margin-bottom:16px">
+    <h2>Buyer desk: accept, collect quotes per line, award <span class="muted small" id="count"></span></h2>
     <div id="list"></div>
+  </section>
+  <section class="panel">
+    <h2>Ordered, not delivered yet <span class="muted small" id="orderedCount"></span></h2>
+    <div class="body">
+      <p class="muted small">If an order turns out wrong before anything arrives (wrong item, a quote that covered only part of a line,
+        a wrong price), cancel it here: the supplier is told, the commitment goes back to the budget, the approvals of that
+        price lapse and the request comes back to you for sourcing. Once goods are checked in, return them at goods-in instead.</p>
+      <div id="ordered"></div>
+    </div>
   </section>
 </main>
 
 <script src="common.js"></script>
 <script>renderNav('buyer.html');</script>
 <script>
-  let policy = { singleQuoteUpTo: 3000, strategicAbove: 25000 };
+  const $ = id => document.getElementById(id);
+  let policy = { singleQuoteUpTo: 3000, strategicAbove: 25000, priceDeviationPercent: 40 };
   const OWNER = { BUYER: 'Buyer', CATEGORY_MANAGER: 'Category manager (strategic)' };
-
-  async function load() {
-    policy = await api('GET', '/api/buyer/requests/policy');
-    const requests = await api('GET', '/api/buyer/requests');
-    document.getElementById('count').textContent = `· ${requests.length} open`;
-    document.getElementById('list').innerHTML = requests.length ? requests.map(card).join('')
-      : '<div class="placeholder">Nothing for a buyer. Standard requests are approved and ordered without one.</div>';
-    requests.forEach(bind);
-  }
+  const staffId = () => $('staff').value;
 
   function header(r) {
     const step = r.status === 'BUYER_REVIEW' ? 'Step 1 of 3 · accept' : 'Step 2–3 of 3 · quotes and award';
@@ -52,36 +55,67 @@
         <button data-act="strategic">Strategic review</button><button data-act="reject">Reject</button></div>`;
   }
 
-  function sourcingHtml(r) {
-    const reqs = requirementsOf(r);
-    const quotes = r.quotes || [];
-    const rows = quotes.map((q, i) => `<tr><td><input type="radio" name="award-${r.id}" value="${i}" ${i === 0 ? 'checked' : ''}></td>
-        <td>${esc(q.supplierName)}</td><td>${esc(q.description || '')}</td><td class="num">${q.quantity}</td>
-        <td class="num">${money(q.unitPrice, r.currency)}</td><td class="num">${money(q.total, r.currency)}</td>
-        <td class="muted small">${esc(q.reference || '')}</td></tr>`).join('');
-    return `<div class="section-title">Step 2 · Quotes <span class="muted small">(policy 5: up to ${money(policy.singleQuoteUpTo)} one quote; above, three; above ${money(policy.strategicAbove)} strategic)</span></div>
-      ${quotes.length ? `<table><thead><tr><th></th><th>Supplier</th><th>Item</th><th class="num">Qty</th><th class="num">Unit</th><th class="num">Total</th><th>Reference</th></tr></thead><tbody>${rows}</tbody></table>`
-        : '<div class="muted">No quotes yet.</div>'}
-      <div class="form-row" style="margin-top:8px">
-        <input type="text" placeholder="Supplier" data-q="supplierName">
-        <input type="text" placeholder="Item and configuration" data-q="description" value="${esc(r.chosenModel || '')}">
-        <input type="text" placeholder="Qty" data-q="quantity" value="${esc((r.attributes && r.attributes.quantity) || 1)}">
-        <input type="text" placeholder="Unit price (EUR)" data-q="unitPrice">
-      </div>
-      <div class="form-row" style="grid-template-columns: 1fr"><input type="text" placeholder="Reference: quote number, link or screenshot name" data-q="reference"></div>
-      <div class="actions"><button data-act="add-quote">Add quote</button></div>
+  /** Quotes of one line, with their position in the request's list (the award refers to it). */
+  function quotesOf(r, item) {
+    const single = r.sourcingItems.length === 1;
+    return (r.quotes || []).map((q, i) => ({ q, i })).filter(({ q }) => q.itemId === item.id || (!q.itemId && single));
+  }
 
-      ${quotes.length ? `<div class="section-title">Step 3 · Award the selected quote</div>
-        ${r.chosenModel ? `<div class="muted small">The employee chose: ${esc(r.chosenModel)}. If you buy something else, say why.</div>` : ''}
-        <div class="form-row" style="grid-template-columns: 1fr"><input type="text" placeholder="Why not the employee's choice? (only if different)" data-f="substitutionReason"></div>
-        ${reqs.length ? `<div class="muted small" style="margin:6px 0 4px">Does the item you award meet these?</div><div class="confirm-list">${reqs.map((q, i) => `<label class="opt"><input type="checkbox" data-req="${i}">
+  function deviation(item, unit) {
+    if (!item.referenceUnitPrice || !unit) return null;
+    return Math.round((unit - item.referenceUnitPrice) * 100 / item.referenceUnitPrice);
+  }
+
+  function lineHtml(r, item) {
+    const quotes = quotesOf(r, item);
+    const live = quotes.filter(({ q }) => !q.withdrawn);
+    const suppliers = new Set(live.map(({ q }) => q.supplierName.trim().toLowerCase().replace(/\s+/g, ' '))).size;
+    const rows = quotes.map(({ q, i }) => {
+      const d = deviation(item, q.unitPrice);
+      const far = d !== null && Math.abs(d) > policy.priceDeviationPercent;
+      return `<tr style="${q.withdrawn ? 'opacity:.5;text-decoration:line-through' : ''}">
+        <td>${q.withdrawn ? '' : `<input type="radio" name="award-${r.id}-${item.id}" value="${i}">`}</td>
+        <td>${esc(q.supplierName)}</td><td>${esc(q.description || '')}</td><td class="num">${q.quantity}</td>
+        <td class="num">${money(q.unitPrice, r.currency)}${d === null ? '' : `<br><span class="${far ? 'rc-tag ai' : 'muted small'}">${d > 0 ? '+' : ''}${d}% vs reference</span>`}</td>
+        <td class="num">${money(q.total, r.currency)}</td>
+        <td class="small">${/^https?:\/\//.test(q.reference || '') ? `<a href="${esc(q.reference)}" target="_blank" rel="noopener">evidence</a>` : esc(q.reference || '')}
+          <br><span class="muted">${esc(q.addedBy || '')}</span>${q.withdrawn ? `<br><span class="muted">withdrawn: ${esc(q.withdrawn)}</span>` : ''}</td>
+        <td>${q.withdrawn ? '' : `<button class="small-btn" data-withdraw="${i}">Withdraw</button>`}</td></tr>`;
+    }).join('');
+    const reqs = item.requirements || [];
+    return `<div class="card" style="padding:10px 0" data-item="${esc(item.id)}">
+      <div class="rc-head"><b>Line ${esc(item.id)} · ${esc(item.name)}</b><span>× ${item.quantity}</span>
+        <span class="muted small">${item.referenceUnitPrice ? `reference ${money(item.referenceUnitPrice)} / unit (<a href="${esc(item.referenceSource || '#')}" target="_blank" rel="noopener">source</a>)` : 'no reference price'}
+        · ${suppliers} supplier(s) quoted</span></div>
+      ${item.preferredModel ? `<div class="muted small">Employee's choice: ${esc(item.preferredModel)}</div>` : ''}
+      ${quotes.length ? `<table class="rules" style="margin-top:6px"><tr><th></th><th>Supplier</th><th>What the quote covers</th><th class="num">Qty</th><th class="num">Unit</th><th class="num">Total</th><th>Evidence</th><th></th></tr>${rows}</table>`
+        : '<div class="muted small" style="margin:6px 0">No quotes for this line yet.</div>'}
+      <div class="form-row" style="margin-top:6px">
+        <input type="text" placeholder="Supplier" data-q="supplierName">
+        <input type="text" placeholder="What exactly the quote covers (model, size) — as the supplier states it" data-q="description">
+        <input type="text" placeholder="Qty" data-q="quantity" value="${item.quantity}">
+        <input type="text" inputmode="decimal" placeholder="Unit price EUR, e.g. 251 or 251,50" data-q="unitPrice">
+      </div>
+      <div class="form-row" style="grid-template-columns: 1fr auto"><input type="text" placeholder="Evidence (required): link, quote number or document name" data-q="reference">
+        <button data-act="add-quote">Add quote to line ${esc(item.id)}</button></div>
+      ${live.length ? `<div class="muted small" style="margin:8px 0 4px">Award for this line: select a quote above, then confirm each must-have against <b>that</b> quote.</div>
+        ${reqs.length ? `<div class="confirm-list">${reqs.map((q, k) => `<label class="opt"><input type="checkbox" data-req="${k}">
           <span>${esc(q.description)} <span class="muted small">${q.strength === 'preference' ? '(nice to have)' : '(must have)'}</span></span></label>`).join('')}</div>` : ''}
-        <div class="form-row" style="grid-template-columns: 1fr"><input type="text" placeholder="Fewer quotes than the policy asks? Say why (e.g. only one distributor)" data-f="quoteException"></div>
-        <div class="form-row" style="grid-template-columns: 1fr"><input type="text" placeholder="Note to the employee, or the reason if you reject / escalate" data-f="reason"></div>
-        <div class="actions"><button class="primary" data-act="award">Award and send to approval</button>
-          ${r.sourcingOwner === 'CATEGORY_MANAGER' ? '' : '<button data-act="strategic">Strategic review</button>'}<button data-act="reject">Reject</button></div>`
-      : `<div class="form-row" style="grid-template-columns: 1fr"><input type="text" placeholder="Reason (strategic review or reject)" data-f="reason"></div>
-        <div class="actions">${r.sourcingOwner === 'CATEGORY_MANAGER' ? '' : '<button data-act="strategic">Strategic review</button>'}<button data-act="reject">Reject</button></div>`}`;
+        ${item.preferredModel ? `<label class="opt"><input type="checkbox" data-a="same"> <span>The selected quote is the employee's choice (${esc(item.preferredModel)})</span></label>
+          <div class="form-row" style="grid-template-columns: 1fr"><input type="text" placeholder="If not: why another product?" data-a="substitutionReason"></div>` : ''}
+        <div class="form-row" style="grid-template-columns: 1fr 1fr"><input type="text" placeholder="Fewer quotes than the policy asks? Say why" data-a="quoteException">
+          <input type="text" placeholder="Price far from the reference? Explain it" data-a="priceNote"></div>
+        <div data-a="warn"></div>` : ''}
+    </div>`;
+  }
+
+  function sourcingHtml(r) {
+    const items = r.sourcingItems || [];
+    return `<div class="section-title">Step 2–3 · Quotes and award, per line <span class="muted small">(policy 5: up to ${money(policy.singleQuoteUpTo)} in total one quote per line; above, three from different suppliers per line; above ${money(policy.strategicAbove)} strategic; a price more than ${policy.priceDeviationPercent}% from the reference needs an explanation)</span></div>
+      ${items.map(i => lineHtml(r, i)).join('')}
+      <div class="form-row" style="grid-template-columns: 1fr"><input type="text" placeholder="Note to the employee, or the reason if you reject / escalate" data-f="reason"></div>
+      <div class="actions">${(r.quotes || []).some(q => !q.withdrawn) ? '<button class="primary" data-act="award">Award all lines and send to approval</button>' : ''}
+        ${r.sourcingOwner === 'CATEGORY_MANAGER' ? '' : '<button data-act="strategic">Strategic review</button>'}<button data-act="reject">Reject</button></div>`;
   }
 
   function card(r) {
@@ -89,27 +123,88 @@
   }
 
   function bind(r) {
-    const el = document.getElementById('card-' + r.id);
+    const el = $('card-' + r.id);
     const val = f => { const x = el.querySelector(`[data-f="${f}"]`); return x ? x.value.trim() : ''; };
-    const q = f => el.querySelector(`[data-q="${f}"]`).value.trim();
     const on = (act, fn) => { const b = el.querySelector(`[data-act="${act}"]`); if (b) b.onclick = () => run(fn); };
-    on('accept', async () => { await api('POST', `/api/buyer/requests/${r.id}/accept`); toast(`${r.number} accepted`); });
-    on('strategic', async () => { await api('POST', `/api/buyer/requests/${r.id}/strategic`, { reason: val('reason') }); toast(`${r.number} sent to strategic review`); });
-    on('reject', async () => { await api('POST', `/api/buyer/requests/${r.id}/reject`, { reason: val('reason') }); toast(`${r.number} rejected`); });
-    on('add-quote', async () => {
-      await api('POST', `/api/buyer/requests/${r.id}/quotes`, { supplierName: q('supplierName'), description: q('description'),
-        quantity: parseInt(q('quantity'), 10) || 1, unitPrice: q('unitPrice') || null, reference: q('reference') });
-      toast('Quote added');
+    const base = `/api/buyer/requests/${r.id}`;
+    on('accept', async () => { await api('POST', `${base}/accept`, null, staffId()); toast(`${r.number} accepted`); });
+    on('strategic', async () => { await api('POST', `${base}/strategic`, { reason: val('reason') }, staffId()); toast(`${r.number} sent to strategic review`); });
+    on('reject', async () => { await api('POST', `${base}/reject`, { reason: val('reason') }, staffId()); toast(`${r.number} rejected`); });
+    el.querySelectorAll('[data-item]').forEach(line => {
+      const item = r.sourcingItems.find(i => i.id === line.dataset.item);
+      const q = f => line.querySelector(`[data-q="${f}"]`).value.trim();
+      const add = line.querySelector('[data-act="add-quote"]');
+      if (add) add.onclick = () => run(async () => {
+        const unitPrice = parseAmount(q('unitPrice'));
+        const quantity = parseInt(q('quantity'), 10);
+        if (!q('supplierName')) throw new Error('Enter the supplier');
+        if (!q('description')) throw new Error('Say what exactly the quote covers, as the supplier states it');
+        if (!quantity || quantity < 1) throw new Error('Enter the quantity as a whole number, e.g. 25');
+        if (!unitPrice || unitPrice <= 0) throw new Error('Enter the unit price as a number, e.g. 251 or 251,50');
+        if (!q('reference')) throw new Error('Give the evidence: a link, a quote number or a document name');
+        await api('POST', `${base}/quotes`, { supplierName: q('supplierName'), description: q('description'), quantity,
+          unitPrice, reference: q('reference'), itemId: item.id }, staffId());
+        toast(`Quote added to line ${item.id}`);
+      });
+      line.querySelectorAll('[data-withdraw]').forEach(b => b.onclick = () => run(async () => {
+        const reason = prompt('Why is this quote withdrawn? (it stays on the request for audit)');
+        if (!reason) return;
+        await api('POST', `${base}/quotes/${b.dataset.withdraw}/withdraw`, { reason }, staffId());
+        toast('Quote withdrawn');
+      }));
+      // live price check as the buyer picks a quote
+      line.querySelectorAll(`input[name="award-${r.id}-${item.id}"]`).forEach(radio => radio.onchange = () => {
+        const quote = r.quotes[+radio.value];
+        const d = deviation(item, quote.unitPrice);
+        const w = line.querySelector('[data-a="warn"]');
+        if (w) w.innerHTML = d !== null && Math.abs(d) > policy.priceDeviationPercent
+          ? `<div class="rc-warn">${money(quote.unitPrice)} is ${Math.abs(d)}% ${d < 0 ? 'below' : 'above'} the reference ${money(item.referenceUnitPrice)}. Does the quote cover the whole item (e.g. the desk, not just a chair) and the full quantity? If it does, explain the price.</div>` : '';
+      });
     });
     on('award', async () => {
-      const chosen = el.querySelector(`input[name="award-${r.id}"]:checked`);
-      const reqs = requirementsOf(r);
-      await api('POST', `/api/buyer/requests/${r.id}/award`, {
-        quoteIndex: chosen ? parseInt(chosen.value, 10) : 0, substitutionReason: val('substitutionReason'),
-        quoteException: val('quoteException'), note: val('reason'),
-        confirmations: reqs.map((x, i) => ({ requirement: x.description, met: el.querySelector(`[data-req="${i}"]`).checked })),
+      const lines = r.sourcingItems.map(item => {
+        const line = el.querySelector(`[data-item="${item.id}"]`);
+        const chosen = line.querySelector(`input[name="award-${r.id}-${item.id}"]:checked`);
+        if (!chosen) throw new Error(`Line ${item.id} (${item.name}): select one of its quotes`);
+        const a = f => { const x = line.querySelector(`[data-a="${f}"]`); return x ? (x.type === 'checkbox' ? x.checked : x.value.trim()) : null; };
+        return { itemId: item.id, quoteIndex: +chosen.value, sameAsPreferred: a('same') === true,
+          substitutionReason: a('substitutionReason') || null, quoteException: a('quoteException') || null, priceNote: a('priceNote') || null,
+          confirmations: (item.requirements || []).map((x, k) => ({ requirement: x.description, met: line.querySelector(`[data-req="${k}"]`).checked })) };
       });
+      await api('POST', `${base}/award`, { lines, note: val('reason') || null }, staffId());
       toast(`${r.number}: awarded, now in approval and the budget check`);
+    });
+  }
+
+  function orderedCard(r) {
+    return `<div class="card" id="ord-${r.id}">
+      <div class="muted small">${esc(r.number)} · ${esc(r.requester.name)} · ${esc(r.requester.department)} · ${esc(REQ_STATUS[r.status] || r.status)}</div>
+      <div class="brief-title">${esc(r.title || r.categoryName)}</div>
+      ${awardsHtml(r)}
+      <div class="form-row" style="grid-template-columns: 1fr auto"><input type="text" placeholder="What was wrong with the order (the supplier and the employee see it)" data-f="why">
+        <button data-act="reopen">Cancel order and source again</button></div></div>`;
+  }
+
+  async function load() {
+    history.replaceState(null, '', '?staff=' + encodeURIComponent(staffId()));
+    policy = await api('GET', '/api/buyer/requests/policy');
+    const requests = await api('GET', '/api/buyer/requests');
+    $('count').textContent = `· ${requests.length} open`;
+    $('list').innerHTML = requests.length ? requests.map(card).join('')
+      : '<div class="placeholder">Nothing for a buyer. Standard requests are approved and ordered without one.</div>';
+    requests.forEach(bind);
+    const ordered = await api('GET', '/api/buyer/requests/ordered');
+    $('orderedCount').textContent = `· ${ordered.length}`;
+    $('ordered').innerHTML = ordered.length ? ordered.map(orderedCard).join('') : '<div class="muted small">None.</div>';
+    ordered.forEach(r => {
+      const el = $('ord-' + r.id);
+      el.querySelector('[data-act="reopen"]').onclick = () => run(async () => {
+        const why = el.querySelector('[data-f="why"]').value.trim();
+        if (!why) throw new Error('Say what was wrong with the order');
+        if (!confirm(`Cancel the order(s) of ${r.number} with the supplier and source it again?`)) return;
+        await api('POST', `/api/buyer/requests/${r.id}/reopen`, { reason: why }, staffId());
+        toast(`${r.number}: order cancelled, back to sourcing`);
+      });
     });
   }
 
@@ -118,8 +213,14 @@
     catch (e) { toast('Error: ' + e.message); }
   }
 
-  load().catch(e => toast('Error: ' + e.message));
+  async function init() {
+    const staff = await api('GET', '/api/staff');
+    const wanted = new URLSearchParams(location.search).get('staff') || 'S40';
+    $('staff').innerHTML = staff.map(m => `<option value="${esc(m.id)}" ${m.id === wanted ? 'selected' : ''}>${esc(m.name)} · ${esc(m.title)}</option>`).join('');
+    $('staff').addEventListener('change', () => load().catch(e => toast('Error: ' + e.message)));
+    await load();
+  }
+  init().catch(e => toast('Error: ' + e.message));
 </script>
-ipt>
 </body>
 </html>

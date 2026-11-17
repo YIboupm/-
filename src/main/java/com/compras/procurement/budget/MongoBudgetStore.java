@@ -1,91 +1,52 @@
 package com.compras.procurement.budget;
-
 import org.springframework.dao.DuplicateKeyException;
-import org.springframework.data.mongodb.core.FindAndModifyOptions;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Component;
-
-import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
-/** MongoDB: conditional findAndModify on a single document is atomic, which is all the race needs. */
+/** Single-document CAS works on standalone MongoDB; balance and audit trail cannot diverge. */
 @Component
 public class MongoBudgetStore implements BudgetStore {
-
     private final MongoTemplate mongo;
-
-    public MongoBudgetStore(MongoTemplate mongo) {
-        this.mongo = mongo;
-    }
-
-    @Override
-    public Optional<BudgetAccount> account(String id) {
-        return Optional.ofNullable(mongo.findById(id, BudgetAccount.class));
-    }
-
-    @Override
-    public void ensure(BudgetAccount account) {
-        try {
-            mongo.insert(account);
-        } catch (DuplicateKeyException exists) {
-            // already created, possibly by a concurrent request
+    public MongoBudgetStore(MongoTemplate mongo) { this.mongo = mongo; }
+    @Override public Optional<BudgetAccount> account(String id) {
+        BudgetAccount a = mongo.findById(id, BudgetAccount.class);
+        if (a != null && a.journal() == null) {
+            // Upgrade without moving money. Stop old application instances before upgrading.
+            // Keep the legacy collection for audit/recovery; never merge it back after migration.
+            var entries = mongo.find(Query.query(Criteria.where("accountId").is(id)), BudgetEntry.class);
+            mongo.updateFirst(Query.query(Criteria.where("id").is(id).and("journal").is(null)),
+                    new Update().set("journal", entries).set("revision", 0L), BudgetAccount.class);
+            a = mongo.findById(id, BudgetAccount.class);
         }
+        return Optional.ofNullable(a);
     }
-
-    @Override
-    public boolean tryReserve(String accountId, long amount) {
-        BudgetAccount updated = mongo.findAndModify(
-                Query.query(Criteria.where("id").is(accountId).and("available").gte(amount)),
-                new Update().inc("available", -amount).inc("reserved", amount),
-                FindAndModifyOptions.options().returnNew(true),
-                BudgetAccount.class);
-        return updated != null;
+    @Override public void ensure(BudgetAccount account) {
+        try { mongo.insert(account); } catch (DuplicateKeyException exists) { /* concurrent creation */ }
     }
-
-    @Override
-    public void move(String accountId, long available, long reserved, long committed, long spent) {
-        mongo.findAndModify(Query.query(Criteria.where("id").is(accountId)),
-                new Update().inc("available", available).inc("reserved", reserved).inc("committed", committed)
-                        .inc("spent", spent),
-                FindAndModifyOptions.options().returnNew(true), BudgetAccount.class);
+    @Override public boolean compareAndSet(BudgetAccount expected, BudgetAccount updated) {
+        return mongo.findAndReplace(Query.query(Criteria.where("id").is(expected.id())
+                .and("revision").is(expected.revision())), updated) != null;
     }
-
-    @Override
-    public boolean insert(BudgetEntry entry) {
-        try {
-            mongo.insert(entry);
-            return true;
-        } catch (DuplicateKeyException duplicate) {
-            return false;
-        }
+    @Override public List<BudgetEntry> entriesForRequest(String requestId) {
+        var ids = new java.util.LinkedHashSet<String>();
+        mongo.find(Query.query(Criteria.where("journal.requestId").is(requestId)), BudgetAccount.class)
+                .forEach(a -> ids.add(a.id()));
+        mongo.find(Query.query(Criteria.where("requestId").is(requestId)), BudgetEntry.class)
+                .forEach(e -> ids.add(e.accountId()));
+        return ids.stream().flatMap(id -> entriesForAccount(id).stream())
+                .filter(e -> e.requestId().equals(requestId)).toList();
     }
-
-    @Override
-    public void delete(String entryId) {
-        mongo.remove(Query.query(Criteria.where("id").is(entryId)), BudgetEntry.class);
+    @Override public List<BudgetEntry> entriesForAccount(String id) {
+        return account(id).map(BudgetAccount::journal).orElse(List.of());
     }
-
-    @Override
-    public List<BudgetEntry> entriesForRequest(String requestId) {
-        return sorted(mongo.find(Query.query(Criteria.where("requestId").is(requestId)), BudgetEntry.class));
-    }
-
-    @Override
-    public List<BudgetEntry> entriesForAccount(String accountId) {
-        return sorted(mongo.find(Query.query(Criteria.where("accountId").is(accountId)), BudgetEntry.class));
-    }
-
-    @Override
-    public List<BudgetAccount> accounts(String period) {
+    @Override public List<BudgetAccount> accounts(String period) {
         return mongo.find(Query.query(Criteria.where("period").is(period)), BudgetAccount.class).stream()
-                .sorted(Comparator.comparing(BudgetAccount::department)).toList();
-    }
-
-    private static List<BudgetEntry> sorted(List<BudgetEntry> entries) {
-        return entries.stream().sorted(Comparator.comparing(BudgetEntry::at)).toList();
+                .map(a -> account(a.id()).orElseThrow())
+                .sorted(java.util.Comparator.comparing(BudgetAccount::department)).toList();
     }
 }

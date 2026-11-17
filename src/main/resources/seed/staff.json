@@ -1,133 +1,142 @@
 [
- {
-  "id": "S01",
-  "name": "Pablo Martin",
-  "title": "Marketing Manager",
-  "role": "LINE_MANAGER",
-  "departments": [
-   "Marketing"
-  ]
- },
- {
-  "id": "S02",
-  "name": "Elena Torres",
-  "title": "Engineering & Operations Manager",
-  "role": "LINE_MANAGER",
-  "departments": [
-   "Engineering",
-   "Operations"
-  ]
- },
- {
-  "id": "S03",
-  "name": "Nuria Vidal",
-  "title": "Sales Manager",
-  "role": "LINE_MANAGER",
-  "departments": [
-   "Sales"
-  ]
- },
- {
-  "id": "S04",
-  "name": "Miguel Navarro",
-  "title": "Finance Manager",
-  "role": "LINE_MANAGER",
-  "departments": [
-   "Finance"
-  ]
- },
- {
-  "id": "S05",
-  "name": "Tomas Herrera",
-  "title": "IT Manager",
-  "role": "LINE_MANAGER",
-  "departments": [
-   "IT"
-  ]
- },
- {
-  "id": "S10",
-  "name": "Sofia Romero",
-  "title": "Commercial Director",
-  "role": "DEPARTMENT_HEAD",
-  "departments": [
-   "Marketing",
-   "Sales"
-  ]
- },
- {
-  "id": "S11",
-  "name": "Ricardo Gil",
-  "title": "Chief Operating Officer",
-  "role": "DEPARTMENT_HEAD",
-  "departments": [
-   "Engineering",
-   "Operations",
-   "IT",
-   "Finance"
-  ]
- },
- {
-  "id": "S20",
-  "name": "Isabel Moreno",
-  "title": "Finance Controller",
-  "role": "FINANCE_CONTROLLER",
-  "departments": [
-   "*"
-  ]
- },
- {
-  "id": "S21",
-  "name": "Andres Castillo",
-  "title": "Chief Financial Officer",
-  "role": "CFO",
-  "departments": [
-   "*"
-  ]
- },
- {
-  "id": "S30",
-  "name": "David Ortega",
-  "title": "IT Asset Manager",
-  "role": "IT_ASSET_MANAGER",
-  "departments": [
-   "*"
-  ]
- },
- {
-  "id": "S40",
-  "name": "Lucia Fernandez",
-  "title": "Buyer",
-  "role": "BUYER",
-  "departments": [
-   "*"
-  ]
- },
- {
-  "id": "S41",
-  "name": "Jorge Navas",
-  "title": "Category Manager (IT & office)",
-  "role": "CATEGORY_MANAGER",
-  "departments": [
-   "*"
-  ]
- },
- {
-  "id": "S31",
-  "name": "Carmen Ruiz",
-  "title": "Cloud Platform Lead",
-  "role": "CLOUD_PLATFORM",
-  "departments": [
-   "*"
-  ]
- },
- {
-  "id": "S32",
-  "name": "Alberto Sanz",
-  "title": "IT Security & Data Protection Officer",
-  "role": "IT_SECURITY",
-  "departments": [
-   "*"
-  ]
- }
+  {
+    "id": "S01",
+    "name": "Pablo Martin",
+    "title": "Marketing Manager",
+    "role": "LINE_MANAGER",
+    "departments": [
+      "Marketing"
+    ]
+  },
+  {
+    "id": "S02",
+    "name": "Elena Torres",
+    "title": "Engineering & Operations Manager",
+    "role": "LINE_MANAGER",
+    "departments": [
+      "Engineering",
+      "Operations"
+    ]
+  },
+  {
+    "id": "S03",
+    "name": "Nuria Vidal",
+    "title": "Sales Manager",
+    "role": "LINE_MANAGER",
+    "departments": [
+      "Sales"
+    ]
+  },
+  {
+    "id": "S04",
+    "name": "Miguel Navarro",
+    "title": "Finance Manager",
+    "role": "LINE_MANAGER",
+    "departments": [
+      "Finance"
+    ]
+  },
+  {
+    "id": "S05",
+    "name": "Tomas Herrera",
+    "title": "IT Manager",
+    "role": "LINE_MANAGER",
+    "departments": [
+      "IT"
+    ]
+  },
+  {
+    "id": "S10",
+    "name": "Sofia Romero",
+    "title": "Commercial Director",
+    "role": "DEPARTMENT_HEAD",
+    "departments": [
+      "Marketing",
+      "Sales"
+    ]
+  },
+  {
+    "id": "S11",
+    "name": "Ricardo Gil",
+    "title": "Chief Operating Officer",
+    "role": "DEPARTMENT_HEAD",
+    "departments": [
+      "Engineering",
+      "Operations",
+      "IT",
+      "Finance"
+    ]
+  },
+  {
+    "id": "S20",
+    "name": "Isabel Moreno",
+    "title": "Finance Controller",
+    "role": "FINANCE_CONTROLLER",
+    "departments": [
+      "*"
+    ]
+  },
+  {
+    "id": "S21",
+    "name": "Andres Castillo",
+    "title": "Chief Financial Officer",
+    "role": "CFO",
+    "departments": [
+      "*"
+    ]
+  },
+  {
+    "id": "S30",
+    "name": "David Ortega",
+    "title": "IT Asset Manager",
+    "role": "IT_ASSET_MANAGER",
+    "departments": [
+      "*"
+    ]
+  },
+  {
+    "id": "S40",
+    "name": "Lucia Fernandez",
+    "title": "Buyer",
+    "role": "BUYER",
+    "departments": [
+      "*"
+    ]
+  },
+  {
+    "id": "S41",
+    "name": "Jorge Navas",
+    "title": "Category Manager (IT & office)",
+    "role": "CATEGORY_MANAGER",
+    "departments": [
+      "*"
+    ]
+  },
+  {
+    "id": "S31",
+    "name": "Carmen Ruiz",
+    "title": "Cloud Platform Lead",
+    "role": "CLOUD_PLATFORM",
+    "departments": [
+      "*"
+    ]
+  },
+  {
+    "id": "S32",
+    "name": "Alberto Sanz",
+    "title": "IT Security & Data Protection Officer",
+    "role": "IT_SECURITY",
+    "departments": [
+      "*"
+    ]
+  },
+  {
+    "id": "S50",
+    "name": "Marta Iglesias",
+    "title": "Office & facilities manager",
+    "role": "FACILITIES",
+    "departments": [
+      "*"
+    ]
+  }
 ]

@@ -1,0 +1,594 @@
+{
+  "version": "2026.11",
+  "status": "ACTIVE",
+  "effectiveFrom": "2026-11-01",
+  "note": "First version: the procurement policy document, sections 2 to 8, as decision tables.",
+  "parameters": {
+    "splitWindowDays": 30,
+    "priceDeviationPercent": 40
+  },
+  "routing": [
+    {
+      "id": "R-VALUE",
+      "section": "7",
+      "route": "STRATEGIC",
+      "when": [
+        {
+          "fact": "contractValue",
+          "op": "gt",
+          "value": 25000
+        }
+      ],
+      "reason": "Contract value {contractValue} is over {threshold} (policy 7)"
+    },
+    {
+      "id": "R-OFF-FRAMEWORK",
+      "section": "7",
+      "route": "STRATEGIC",
+      "when": [
+        {
+          "fact": "nonStandard",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "fact": "frameworkCategory",
+          "op": "eq",
+          "value": true
+        }
+      ],
+      "reason": "A supplier outside the framework agreements for this category (policy 7)"
+    },
+    {
+      "id": "R-TERM",
+      "section": "7",
+      "route": "STRATEGIC",
+      "when": [
+        {
+          "fact": "termMonths",
+          "op": "gt",
+          "value": 12
+        },
+        {
+          "fact": "nonStandard",
+          "op": "eq",
+          "value": true
+        }
+      ],
+      "reason": "A new supplier or service for {termMonths} months, over {threshold} (policy 7)"
+    },
+    {
+      "id": "R-SOLE-SOURCE",
+      "section": "7",
+      "route": "STRATEGIC",
+      "when": [
+        {
+          "fact": "nonStandard",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "fact": "soleSource",
+          "op": "eq",
+          "value": true
+        }
+      ],
+      "reason": "Sole source: only one supplier can provide it (policy 7, 10)"
+    },
+    {
+      "id": "R-RESTRICTED",
+      "section": "7",
+      "route": "STRATEGIC",
+      "when": [
+        {
+          "fact": "nonStandard",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "fact": "dataClassification",
+          "op": "eq",
+          "value": "Restricted"
+        }
+      ],
+      "reason": "A new supplier would handle Restricted data (policy 7, 9)"
+    },
+    {
+      "id": "R-BUYER",
+      "section": "4",
+      "route": "BUYER_SOURCED",
+      "when": [
+        {
+          "fact": "nonStandard",
+          "op": "eq",
+          "value": true
+        }
+      ],
+      "reason": ""
+    },
+    {
+      "id": "R-STANDARD",
+      "section": "4",
+      "route": "STANDARD",
+      "when": [],
+      "reason": ""
+    }
+  ],
+  "approvals": [
+    {
+      "id": "A-NEED",
+      "section": "6",
+      "stage": "NEED",
+      "role": "LINE_MANAGER",
+      "when": [],
+      "reason": "Approve the need before a buyer sources and prices it"
+    },
+    {
+      "id": "A-BUDGET-HOLDER",
+      "section": "6",
+      "stage": "SPEND",
+      "role": "LINE_MANAGER",
+      "when": [],
+      "waivable": true,
+      "reason": "Budget holder for {department}"
+    },
+    {
+      "id": "A-IT",
+      "section": "6",
+      "stage": "SPEND",
+      "role": "IT_ASSET_MANAGER",
+      "when": [
+        {
+          "fact": "category",
+          "op": "in",
+          "value": [
+            "LAPTOP",
+            "ONBOARDING_KIT"
+          ]
+        }
+      ],
+      "reason": "IT equipment: compatibility, security and asset register"
+    },
+    {
+      "id": "A-CLOUD",
+      "section": "6",
+      "stage": "SPEND",
+      "role": "CLOUD_PLATFORM",
+      "when": [
+        {
+          "fact": "category",
+          "op": "in",
+          "value": [
+            "CLOUD"
+          ]
+        }
+      ],
+      "reason": "Cloud: account set-up in the landing zone, sizing and cost alerts"
+    },
+    {
+      "id": "A-SENSITIVE-DATA",
+      "section": "9",
+      "stage": "SPEND",
+      "role": "IT_SECURITY",
+      "when": [
+        {
+          "fact": "dataClassification",
+          "op": "in",
+          "value": [
+            "Confidential",
+            "Restricted"
+          ]
+        }
+      ],
+      "reason": "Data protection: {dataClassification} data"
+    },
+    {
+      "id": "A-DATA-OUTSIDE-EU",
+      "section": "9",
+      "stage": "SPEND",
+      "role": "IT_SECURITY",
+      "when": [
+        {
+          "fact": "region",
+          "op": "notIn",
+          "value": [
+            "Spain",
+            "Other EU"
+          ]
+        },
+        {
+          "fact": "dataClassification",
+          "op": "ne",
+          "value": "Public"
+        }
+      ],
+      "reason": "Data protection: {dataClassification} data outside the EU ({region})"
+    },
+    {
+      "id": "A-HEAD",
+      "section": "6",
+      "stage": "SPEND",
+      "role": "DEPARTMENT_HEAD",
+      "when": [
+        {
+          "fact": "contractValue",
+          "op": "gt",
+          "value": 5000
+        }
+      ],
+      "reason": "Over {threshold}"
+    },
+    {
+      "id": "A-FINANCE",
+      "section": "6",
+      "stage": "SPEND",
+      "role": "FINANCE_CONTROLLER",
+      "when": [
+        {
+          "fact": "contractValue",
+          "op": "gt",
+          "value": 5000
+        }
+      ],
+      "reason": "Over {threshold}"
+    },
+    {
+      "id": "A-OVER-BUDGET",
+      "section": "8",
+      "stage": "SPEND",
+      "role": "FINANCE_CONTROLLER",
+      "coversOverBudget": true,
+      "when": [
+        {
+          "fact": "overBudget",
+          "op": "eq",
+          "value": true
+        }
+      ],
+      "reason": "Over the department's quarterly budget"
+    },
+    {
+      "id": "A-CFO",
+      "section": "6",
+      "stage": "SPEND",
+      "role": "CFO",
+      "when": [
+        {
+          "fact": "contractValue",
+          "op": "gt",
+          "value": 25000
+        }
+      ],
+      "reason": "Over {threshold}"
+    }
+  ],
+  "autoApprovals": [
+    {
+      "id": "AUTO-SMALL-CATALOG",
+      "section": "6",
+      "stage": "SPEND",
+      "when": [
+        {
+          "fact": "contractValue",
+          "op": "lte",
+          "value": 1000
+        },
+        {
+          "fact": "catalogItem",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "fact": "overBudget",
+          "op": "eq",
+          "value": false
+        }
+      ],
+      "reason": "Catalog item within the approval limit and the department's budget"
+    }
+  ],
+  "quotes": [
+    {
+      "id": "Q-THREE",
+      "section": "5",
+      "when": [
+        {
+          "fact": "awardValue",
+          "op": "gt",
+          "value": 3000
+        }
+      ],
+      "quotes": 3
+    }
+  ],
+  "routes": {
+    "STANDARD": [
+      {
+        "type": "APPROVAL",
+        "stage": "SPEND",
+        "label": "Approval of the spend"
+      },
+      {
+        "type": "BUDGET_RESERVE",
+        "label": "Budget reserved"
+      },
+      {
+        "type": "FULFIL",
+        "label": "Pooled or ordered"
+      }
+    ],
+    "BUYER_SOURCED": [
+      {
+        "type": "APPROVAL",
+        "stage": "NEED",
+        "label": "Approval of the need"
+      },
+      {
+        "type": "SOURCING",
+        "owner": "BUYER",
+        "label": "Buyer collects quotes and awards"
+      },
+      {
+        "type": "APPROVAL",
+        "stage": "SPEND",
+        "label": "Approval of the spend"
+      },
+      {
+        "type": "BUDGET_RESERVE",
+        "label": "Budget reserved"
+      },
+      {
+        "type": "FULFIL",
+        "label": "Ordered"
+      }
+    ],
+    "STRATEGIC": [
+      {
+        "type": "STRATEGIC_REVIEW",
+        "label": "Category manager decides how to source"
+      },
+      {
+        "type": "SOURCING",
+        "owner": "CATEGORY_MANAGER",
+        "label": "Quotes, tender or framework agreement"
+      },
+      {
+        "type": "APPROVAL",
+        "stage": "SPEND",
+        "label": "Approval of the spend"
+      },
+      {
+        "type": "BUDGET_RESERVE",
+        "label": "Budget reserved"
+      },
+      {
+        "type": "FULFIL",
+        "label": "Ordered"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "Small catalog item within budget: nobody approves",
+      "facts": {
+        "catalogItem": true,
+        "contractValue": 400,
+        "category": "TONER",
+        "overBudget": false
+      },
+      "route": "STANDARD",
+      "approvers": {
+        "SPEND": []
+      }
+    },
+    {
+      "name": "Laptop: line manager and IT",
+      "facts": {
+        "catalogItem": true,
+        "contractValue": 1300,
+        "category": "LAPTOP"
+      },
+      "route": "STANDARD",
+      "approvers": {
+        "SPEND": [
+          "LINE_MANAGER",
+          "IT_ASSET_MANAGER"
+        ]
+      }
+    },
+    {
+      "name": "Over 5,000: department head and finance join",
+      "facts": {
+        "catalogItem": true,
+        "contractValue": 8000,
+        "category": "ACCESSORY"
+      },
+      "route": "STANDARD",
+      "approvers": {
+        "SPEND": [
+          "LINE_MANAGER",
+          "DEPARTMENT_HEAD",
+          "FINANCE_CONTROLLER"
+        ]
+      }
+    },
+    {
+      "name": "Over budget: finance decides even for a small item",
+      "facts": {
+        "catalogItem": true,
+        "contractValue": 300,
+        "category": "TONER",
+        "overBudget": true
+      },
+      "route": "STANDARD",
+      "approvers": {
+        "SPEND": [
+          "LINE_MANAGER",
+          "FINANCE_CONTROLLER"
+        ]
+      }
+    },
+    {
+      "name": "Over 25,000: strategic",
+      "facts": {
+        "catalogItem": true,
+        "contractValue": 30000,
+        "category": "LAPTOP"
+      },
+      "route": "STRATEGIC"
+    },
+    {
+      "name": "Special request: need approved first, then a buyer",
+      "facts": {
+        "nonStandard": true,
+        "contractValue": 0
+      },
+      "route": "BUYER_SOURCED",
+      "approvers": {
+        "NEED": [
+          "LINE_MANAGER"
+        ]
+      }
+    },
+    {
+      "name": "Sole source: strategic",
+      "facts": {
+        "nonStandard": true,
+        "soleSource": true
+      },
+      "route": "STRATEGIC"
+    },
+    {
+      "name": "Cloud provider outside the agreements: strategic",
+      "facts": {
+        "nonStandard": true,
+        "frameworkCategory": true,
+        "category": "CLOUD"
+      },
+      "route": "STRATEGIC"
+    },
+    {
+      "name": "Cloud call-off in Hong Kong with internal data: data protection joins",
+      "facts": {
+        "catalogItem": true,
+        "contractValue": 900,
+        "category": "CLOUD",
+        "region": "Hong Kong",
+        "dataClassification": "Internal"
+      },
+      "route": "STANDARD",
+      "approvers": {
+        "SPEND": [
+          "LINE_MANAGER",
+          "CLOUD_PLATFORM",
+          "IT_SECURITY"
+        ]
+      }
+    },
+    {
+      "name": "Quotes: one up to 3,000, three above",
+      "facts": {
+        "awardValue": 3000
+      },
+      "quotes": 1
+    },
+    {
+      "name": "Quotes: three above 3,000",
+      "facts": {
+        "awardValue": 3000.01
+      },
+      "quotes": 3
+    },
+    {
+      "name": "Asset: a keyboard is IT equipment, registered whatever its price",
+      "facts": {
+        "assetClass": "PERIPHERAL",
+        "itDevice": true,
+        "unitPrice": 39
+      },
+      "tracked": true,
+      "receiver": "IT_ASSET_MANAGER"
+    },
+    {
+      "name": "Asset: an 80 EUR desk lamp is received, not registered",
+      "facts": {
+        "assetClass": "FURNITURE",
+        "itDevice": false,
+        "unitPrice": 80
+      },
+      "tracked": false,
+      "receiver": "FACILITIES"
+    },
+    {
+      "name": "Asset: a 190 EUR chair is registered by facilities",
+      "facts": {
+        "assetClass": "FURNITURE",
+        "itDevice": false,
+        "unitPrice": 190
+      },
+      "tracked": true,
+      "receiver": "FACILITIES"
+    },
+    {
+      "name": "Asset: toner is a consumable",
+      "facts": {
+        "assetClass": "CONSUMABLE",
+        "itDevice": false,
+        "unitPrice": 120
+      },
+      "tracked": false
+    }
+  ],
+  "assets": [
+    {
+      "id": "AST-CONSUMABLE",
+      "section": "13",
+      "when": [
+        {
+          "fact": "assetClass",
+          "op": "eq",
+          "value": "CONSUMABLE"
+        }
+      ],
+      "track": false,
+      "receiver": "FACILITIES",
+      "reason": "Consumable: received, not registered"
+    },
+    {
+      "id": "AST-IT",
+      "section": "13",
+      "when": [
+        {
+          "fact": "itDevice",
+          "op": "eq",
+          "value": true
+        }
+      ],
+      "track": true,
+      "receiver": "IT_ASSET_MANAGER",
+      "reason": "IT equipment: always registered (security and tracking)"
+    },
+    {
+      "id": "AST-VALUE",
+      "section": "13",
+      "when": [
+        {
+          "fact": "unitPrice",
+          "op": "gt",
+          "value": 100
+        }
+      ],
+      "track": true,
+      "receiver": "FACILITIES",
+      "reason": "Unit price {unitPrice} is over {threshold}: registered"
+    },
+    {
+      "id": "AST-LOW-VALUE",
+      "section": "13",
+      "when": [],
+      "track": false,
+      "receiver": "FACILITIES",
+      "reason": "Unit price {unitPrice} is not over €100 and it is not IT equipment: received, not registered"
+    }
+  ]
+}

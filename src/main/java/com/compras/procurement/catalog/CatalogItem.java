@@ -33,8 +33,11 @@ public record CatalogItem(
         BigDecimal listPrice,
         List<PriceBreak> priceBreaks,
         int leadTimeDays,
-        List<String> compatibleWith
+        List<String> compatibleWith,
+        /** What it becomes when delivered (LAPTOP, MONITOR, CONSUMABLE...): decides asset registration. */
+        String assetClass
 ) {
+
 
     /** Unit price when {@code quantity} units are ordered at once. */
     public BigDecimal unitPriceFor(int quantity) {

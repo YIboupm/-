@@ -8,4 +8,6 @@ public interface AssetRepository extends MongoRepository<Asset, String> {
     List<Asset> findByAssignedTo(String employeeId);
 
     List<Asset> findBySiteAndAssignedToIsNull(String site);
+
+    boolean existsBySerialNumber(String serialNumber);
 }

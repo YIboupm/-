@@ -139,10 +139,17 @@
 
   function renderSide(v, open) {
     let html = '';
-    if (v.requestNumber) {
-      html += `<div class="banner ${v.requestStatus === 'BUYER_REVIEW' ? 'special' : ''}">Request <b>${esc(v.requestNumber)}</b>
-        · status <b>${esc(v.requestStatus.replaceAll('_', ' '))}</b>.
-        <a href="${v.requestStatus === 'BUYER_REVIEW' ? 'buyer.html' : 'pool.html'}">Open →</a></div>`;
+    const submitted = v.submitted || [];
+    if (submitted.length) {
+      html += '<div class="section-title">Submitted in this conversation</div>'
+        + submitted.map(s => s.number
+          ? `<div class="banner submitted"><b>${esc(s.number)}</b> · ${esc(s.title || '')}
+              <div class="small">Status <b>${esc((s.status || '').replaceAll('_', ' '))}</b>${s.nextStep ? ' — ' + esc(s.nextStep) : ''}</div>
+              <a href="my-requests.html">My requests →</a></div>`
+          : `<div class="banner">${esc(s.title || 'Existing company resource')}: no purchase was made.</div>`).join('');
+    } else if (v.requestNumber) {
+      html += `<div class="banner">Request <b>${esc(v.requestNumber)}</b>
+        · status <b>${esc(v.requestStatus.replaceAll('_', ' '))}</b>. <a href="my-requests.html">My requests →</a></div>`;
     }
     if (v.status === 'FULFILLED_INTERNAL') {
       html += '<div class="banner">Fulfilled with an existing company resource. No purchase was made.</div>';
@@ -152,13 +159,13 @@
         + v.plan.map(p => `<li class="${p.status}"><span>${PLAN_ICON[p.status] || '○'}</span> ${esc(p.step)}</li>`).join('')
         + '</ul>' + (v.planExplanation ? `<div class="muted small">${esc(v.planExplanation)}</div>` : '');
     }
-    if (v.proposal) html += proposalCard(v.proposal, v.status === 'AWAITING_CONFIRMATION');
+    if (v.proposal) html += proposalCard(v.proposal, open); // stays confirmable while you ask questions
     if (!html) {
       html = `<div class="placeholder">The agent plans its own steps: it checks what the company already has, then the
         catalog, asks you what it needs, and finally proposes something for you to confirm.<br>
         Nothing is submitted until you press Confirm.</div>`;
     }
-    html += `<div class="actions"><button id="restart">${open ? 'Start over' : 'New request'}</button></div>`;
+    html += `<div class="actions"><button id="restart">${open && !(v.submitted || []).length ? 'Start over' : 'New conversation'}</button></div>`;
     html += '<div id="myRequests"></div>';
     $('side').innerHTML = html;
     loadMyRequests();
@@ -203,6 +210,7 @@
       h += '<div class="section-title">Why the standard options do not fit</div><ul class="issues">'
         + p.specialReasons.map(s => `<li class="WARNING">${esc(s)}</li>`).join('') + '</ul>';
     }
+    if (p.items && p.items.length) h += itemsHtml({ items: p.items }) || ('<div class="section-title">Lines</div>' + p.items.map(i => `<div>${i.quantity} × ${esc(i.name)}</div>`).join(''));
     if (p.candidates && p.candidates.length) {
       h += '<div class="section-title">Suggested models (from public sources)</div>' + candidatesHtml(p.candidates)
         + '<div class="muted small" style="margin-top:4px">Prices are list prices from the cited pages; the buyer confirms the final price.</div>';

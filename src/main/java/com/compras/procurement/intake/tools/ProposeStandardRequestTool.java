@@ -43,11 +43,13 @@ public class ProposeStandardRequestTool implements AgentTool {
     private final com.compras.procurement.intake.agent.ReuseGuard reuse;
     /** Finance boundary: a yes/no verdict for this request's amount, never a figure. */
     private final BudgetGate budget;
+    private final com.compras.procurement.policy.PolicyRouter router;
 
     public ProposeStandardRequestTool(CatalogService catalog, FieldNormalizer normalizer, DraftEvaluator evaluator,
                                       IntakeProperties properties, com.compras.procurement.intake.agent.ReuseGuard reuse,
-                                      BudgetGate budget) {
+                                      BudgetGate budget, com.compras.procurement.policy.PolicyRouter router) {
         this.budget = budget;
+        this.router = router;
         this.reuse = reuse;
         this.catalog = catalog;
         this.normalizer = normalizer;
@@ -79,6 +81,8 @@ public class ProposeStandardRequestTool implements AgentTool {
                 "rationale", Schemas.string("Why this catalog option fits the need."),
                 "over_budget_explained", Schemas.anyValue("Set true only after the system said OVER_BUDGET and you "
                         + "told the employee."),
+                com.compras.procurement.intake.agent.StrategicGate.ARG,
+                com.compras.procurement.intake.agent.StrategicGate.schema(),
                 "considered", Schemas.considered()),
                 "category", "fields", "summary");
     }
@@ -166,6 +170,20 @@ public class ProposeStandardRequestTool implements AgentTool {
 
         String title = a.lines().stream().map(l -> l.quantity() + " x " + l.name()).collect(Collectors.joining(", "));
 
+        // Strategic (policy 7): computed by the router on the whole contract value; the employee hears it first.
+        boolean framework = category.resolution() == com.compras.procurement.catalog.ResolutionStrategy.CONSUMPTION;
+        com.compras.procurement.policy.RouteDecision route = router.route(new com.compras.procurement.policy
+                .PolicyRouter.Input(false, framework, a.estimatedTotal(), values));
+        ToolResult gate = com.compras.procurement.intake.agent.StrategicGate.check(route, args, context, name());
+        if (gate != null) {
+            return gate;
+        }
+        List<RuleViolation> warnings = new ArrayList<>(a.warnings());
+        if (route.strategic()) {
+            warnings.add(RuleViolation.warning("strategic", "Strategic purchase: " + String.join("; ",
+                    route.reasons()) + ". The category manager decides how it is sourced before approvals."));
+        }
+
         // Budget: the system checks the amount it computed itself (the model cannot pick an amount to probe)
         // and gets a verdict only. Over budget may still be submitted; the employee must be told first.
         String department = values.get("chargeTo") instanceof String s ? s
@@ -186,8 +204,8 @@ public class ProposeStandardRequestTool implements AgentTool {
         }
         Proposal proposal = new Proposal(Proposal.Type.STANDARD, title, ArgParser.text(args, "summary"),
                 ArgParser.text(args, "rationale"), category.code(), category.name(), values, requirements, a.checks(),
-                a.lines(), a.estimatedTotal(), properties.currency(), a.warnings(), List.of(), null, null,
-                reuse.describe(considered), List.of(), verdict.name());
+                a.lines(), a.estimatedTotal(), properties.currency(), warnings, List.of(), null, null,
+                reuse.describe(considered), List.of(), verdict.name(), List.of());
         return ToolResult.propose(proposal, "propose_standard_request · " + title + " · "
                 + a.estimatedTotal() + " " + properties.currency()
                 + (defaults.isEmpty() ? "" : " (defaults: " + String.join(", ", defaults) + ")"));

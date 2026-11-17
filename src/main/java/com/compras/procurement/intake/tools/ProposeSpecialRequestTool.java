@@ -90,8 +90,25 @@ public class ProposeSpecialRequestTool implements AgentTool {
                         + "one-off purchase."),
                 "data_classification", Schemas.enumOf("Most sensitive data the supplier will handle, if any.",
                         "Public", "Internal", "Confidential", "Restricted"),
-                "sole_source", Schemas.anyValue("true only if the employee says just one supplier can provide it."),
+                "sole_source", Schemas.anyValue("true only if the employee confirmed that just one supplier can "
+                        + "provide it (exclusive supply, compatibility with what the company has, intellectual "
+                        + "property, the maker's own maintenance). A preferred brand is not sole source: record it as "
+                        + "a preference in requirements."),
                 "sole_source_reason", Schemas.string("Why only that supplier (required with sole_source)."),
+                com.compras.procurement.intake.agent.StrategicGate.ARG,
+                com.compras.procurement.intake.agent.StrategicGate.schema(),
+                "items", Schemas.array(Schemas.object(Schemas.props(
+                        "name", Schemas.string("What this line is, e.g. \"Height-adjustable desk\"."),
+                        "quantity", Schemas.integer("How many of this line."),
+                        "requirements", Schemas.requirements(),
+                        "preferred_model", Schemas.string("The product the employee chose for this line, if any."),
+                        "reference_unit_price", Schemas.anyValue("Price of ONE unit of this line in EUR, as a page you "
+                                + "saw in this conversation states it (number). Omit if no page gave a price."),
+                        "reference_url", Schemas.string("The page the reference price is from (required with it).")),
+                        "name", "quantity", "requirements"),
+                        "The different things needed, one line each, when there is more than one (a desk and a chair "
+                                + "are two lines; a laptop and its charger in one box are one). Each line is quoted, "
+                                + "ordered and received on its own. Omit for a single thing."),
                 "candidates", Schemas.array(Schemas.object(Schemas.props(
                         "model", Schemas.string("Product, e.g. \"Mac Studio (M4 Max)\"."),
                         "configuration", Schemas.string("Configuration that meets the must-haves."),
@@ -191,11 +208,21 @@ public class ProposeSpecialRequestTool implements AgentTool {
                     + "manager decides how to source it. Remove 'candidates': record the need and the reasons only, "
                     + "do not research or recommend suppliers.");
         }
+        if (problems.isEmpty()) {
+            ToolResult gate = com.compras.procurement.intake.agent.StrategicGate.check(route, args, context, name());
+            if (gate != null) {
+                return gate;
+            }
+        }
+        List<com.compras.procurement.request.SpecialItem> items = items(args.path("items"), route.strategic(), context,
+                problems);
         List<SuggestedModel> candidates = route.strategic() ? List.of()
                 : candidates(args.path("candidates"), context, problems);
         Map<String, String> considered = ReuseGuard.considered(args.path("considered"), problems);
         if (problems.isEmpty()) {
-            reuse.check(requirements, considered, "", null, problems);
+            List<Requirement> all = new ArrayList<>(requirements);
+            items.forEach(i -> all.addAll(i.requirements()));
+            reuse.check(all, considered, "", null, problems);
         }
         if (!problems.isEmpty()) {
             throw new ToolException("The special request was not accepted.", problems);
@@ -224,8 +251,52 @@ public class ProposeSpecialRequestTool implements AgentTool {
         Proposal proposal = new Proposal(Proposal.Type.SPECIAL, title, description, null,
                 category == null ? null : category.code(), category == null ? "Non-catalog request" : category.name(),
                 fields, requirements, checks, lines, total, properties.currency(), notes, reasons, null, null,
-                reuse.describe(considered), candidates, BudgetVerdict.NOT_DISCLOSED.name());
+                reuse.describe(considered), candidates, BudgetVerdict.NOT_DISCLOSED.name(), items);
         return ToolResult.propose(proposal, "propose_special_request · " + title);
+    }
+
+    /** The lines of the request. A reference price must come from a page seen in this conversation. */
+    private List<com.compras.procurement.request.SpecialItem> items(JsonNode node, boolean strategic,
+                                                                     ToolContext context, List<String> problems) {
+        List<com.compras.procurement.request.SpecialItem> list = new ArrayList<>();
+        if (!node.isArray()) {
+            return list;
+        }
+        if (node.size() > 10) {
+            problems.add("At most 10 lines.");
+        }
+        for (int i = 0; i < node.size(); i++) {
+            JsonNode n = node.get(i);
+            String at = "items[" + i + "]";
+            String name = ArgParser.text(n, "name");
+            int quantity = n.path("quantity").asInt(0);
+            if (name == null) {
+                problems.add(at + " needs a 'name'.");
+            }
+            if (quantity < 1 || quantity > 1000) {
+                problems.add(at + ": 'quantity' must be a whole number between 1 and 1000.");
+            }
+            List<Requirement> reqs = ArgParser.requirements(n.path("requirements"), problems);
+            java.math.BigDecimal price = null;
+            String url = ArgParser.text(n, "reference_url");
+            JsonNode p = n.path("reference_unit_price");
+            if (!p.isMissingNode() && !p.isNull() && !p.asText().isBlank()) {
+                try {
+                    price = new java.math.BigDecimal(p.asText().replace("€", "").replace(",", ".").trim());
+                } catch (NumberFormatException e) {
+                    problems.add(at + ": 'reference_unit_price' must be a number in EUR, e.g. 289.99.");
+                }
+                if (strategic) {
+                    problems.add(at + ": a strategic purchase has no researched prices (the category manager sources it). "
+                            + "Remove 'reference_unit_price'.");
+                } else if (url == null || !context.conversation().hasSource(url)) {
+                    problems.add(at + ": a reference price needs 'reference_url', a page seen in this conversation.");
+                }
+            }
+            list.add(new com.compras.procurement.request.SpecialItem(String.valueOf(i + 1), name, quantity, reqs,
+                    price, price == null ? null : url, strategic ? null : ArgParser.text(n, "preferred_model")));
+        }
+        return list;
     }
 
     /** Every spec and price must come from a page the agent actually saw in this conversation. */

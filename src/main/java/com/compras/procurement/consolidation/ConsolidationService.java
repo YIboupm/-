@@ -128,27 +128,61 @@ public class ConsolidationService {
 
     /** A special request the buyer has sourced becomes its own purchase order, outside the pool. */
     public ConsolidatedOrder issueSpecial(String requestId) {
+        return issueSpecialOrders(requestId).get(0);
+    }
+
+    /**
+     * A sourced request: one purchase order per awarded line (lines may go to different suppliers). Requests
+     * awarded before lines existed get one order for the whole award.
+     */
+    public List<ConsolidatedOrder> issueSpecialOrders(String requestId) {
         PurchaseRequest request = requests.get(requestId);
         PurchaseRequest.SourcedItem s = request.getSourced();
         if (s == null) {
             throw new IllegalStateException("Request " + request.getNumber() + " has no sourced item.");
         }
         LocalDate today = LocalDate.now(clock);
-        String department = request.getChargeTo() != null ? request.getChargeTo().department()
-                : request.getRequester().department();
-        ConsolidatedOrder order = orders.save(new ConsolidatedOrder(new ObjectId().toHexString(),
-                sequences.nextNumber("PO"), "SPECIAL", s.description(), null, s.supplierName(),
-                request.getDeliverySite(), s.quantity(), s.unitPrice(), s.unitPrice(), s.total(), s.total(),
-                BigDecimal.ZERO.setScale(2), request.getCurrency(), List.of(ReleaseReason.SPECIAL_REQUEST),
-                List.of(new ConsolidatedOrder.Allocation(null, request.getId(), request.getNumber(),
-                        request.getRequester().name(), department, s.quantity(), request.getNeededBy(),
-                        s.unitPrice(), 0)),
-                today, Instant.now(clock)));
-        gateway.issue(order);
-        events.publishEvent(new Events.OrderReleased(order.id(), order.number(), order.sku(), order.totalQuantity(),
-                List.of(ReleaseReason.SPECIAL_REQUEST.name()), Instant.now(clock)));
-        requests.markOrdered(requestId, List.of(order.number()), s.total());
-        return order;
+        String department = request.chargeDepartment();
+        List<com.compras.procurement.request.Award> awards = request.getAwards();
+        record Part(String itemId, String item, String supplier, int qty, BigDecimal unit, BigDecimal total) {
+        }
+        List<Part> parts = awards.isEmpty()
+                ? List.of(new Part(null, s.description(), s.supplierName(), s.quantity(), s.unitPrice(), s.total()))
+                : awards.stream().map(a -> new Part(a.itemId(),
+                        awards.size() == 1 ? a.description() : a.itemName() + " · " + a.description(),
+                        a.supplierName(), a.quantity(), a.unitPrice(), a.total())).toList();
+        List<ConsolidatedOrder> issued = new ArrayList<>();
+        for (Part p : parts) {
+            ConsolidatedOrder order = orders.save(new ConsolidatedOrder(new ObjectId().toHexString(),
+                    sequences.nextNumber("PO"), "SPECIAL", p.item(), null, p.supplier(),
+                    request.getDeliverySite(), p.qty(), p.unit(), p.unit(), p.total(), p.total(),
+                    BigDecimal.ZERO.setScale(2), request.getCurrency(), List.of(ReleaseReason.SPECIAL_REQUEST),
+                    List.of(new ConsolidatedOrder.Allocation(null, request.getId(), request.getNumber(),
+                            request.getRequester().name(), department, p.qty(), request.getNeededBy(), p.unit(), 0)),
+                    today, Instant.now(clock), p.itemId(), null, null));
+            gateway.issue(order);
+            events.publishEvent(new Events.OrderReleased(order.id(), order.number(), order.sku(), order.totalQuantity(),
+                    List.of(ReleaseReason.SPECIAL_REQUEST.name()), Instant.now(clock)));
+            issued.add(order);
+        }
+        requests.markOrdered(requestId, issued.stream().map(ConsolidatedOrder::number).toList(), s.total());
+        return issued;
+    }
+
+    /** The open orders of a sourced request (orders for pooled catalog demand are never cancelled this way). */
+    public List<ConsolidatedOrder> specialOrdersOf(String requestId) {
+        return orders.findAll().stream()
+                .filter(o -> !o.cancelled() && o.reasons() != null && o.reasons().contains(ReleaseReason.SPECIAL_REQUEST))
+                .filter(o -> o.allocations().stream().anyMatch(a -> requestId.equals(a.requestId())))
+                .toList();
+    }
+
+    /** Cancels an order before delivery and tells the supplier. */
+    public ConsolidatedOrder cancel(ConsolidatedOrder order, String reason) {
+        ConsolidatedOrder cancelled = orders.save(order.cancel(Instant.now(clock), reason));
+        gateway.cancel(cancelled);
+        events.publishEvent(new Events.OrderCancelled(cancelled.id(), cancelled.number(), reason, Instant.now(clock)));
+        return cancelled;
     }
 
     /**
@@ -168,7 +202,7 @@ public class ConsolidationService {
                 List.of(new ConsolidatedOrder.Allocation(null, request.getId(), request.getNumber(),
                         request.getRequester().name(), department, line.quantity(), request.getNeededBy(),
                         line.estimatedUnitPrice(), 0)),
-                today, Instant.now(clock)));
+                today, Instant.now(clock), null, null, null));
         gateway.issue(order);
         events.publishEvent(new Events.OrderReleased(order.id(), order.number(), order.sku(), order.totalQuantity(),
                 List.of(ReleaseReason.FRAMEWORK_CALL_OFF.name()), Instant.now(clock)));
@@ -211,7 +245,7 @@ public class ConsolidationService {
         ConsolidatedOrder order = orders.save(new ConsolidatedOrder(orderId, number, item.sku(), item.name(),
                 item.supplierId(), item.supplierName(), decision.key().deliverySite(), qty, unit, item.listPrice(),
                 total, Money.scale(individual), Money.scale(individual.subtract(total)), item.currency(),
-                decision.reasons(), allocations, asOf, Instant.now(clock)));
+                decision.reasons(), allocations, asOf, Instant.now(clock), null, null, null));
 
         gateway.issue(order);
         events.publishEvent(new Events.OrderReleased(order.id(), order.number(), order.sku(), qty,

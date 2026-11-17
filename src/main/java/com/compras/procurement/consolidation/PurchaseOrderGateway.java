@@ -7,4 +7,8 @@ package com.compras.procurement.consolidation;
 public interface PurchaseOrderGateway {
 
     void issue(ConsolidatedOrder order);
+
+    /** Tells the supplier the order is cancelled (a real one: ERP change order / EDI ORDCHG). */
+    default void cancel(ConsolidatedOrder order) {
+    }
 }

@@ -3,3 +3,7 @@ secrets.properties
 .idea/
 *.iml
 .vscode/
+
+# transfer archives
+*.tgz
+*.bundle

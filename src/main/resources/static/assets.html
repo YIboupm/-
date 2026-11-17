@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Procurement Hub · Assets</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="brand">Procurement<span>Hub</span></div>
+  <nav></nav>
+  <div class="who">Signed in as <select id="staff"></select></div>
+</header>
+
+<main style="display:block">
+  <section class="panel">
+    <h2>Asset register <span class="muted small" id="count"></span></h2>
+    <div class="body">
+      <p class="muted small">Received assets come in from goods-in with their serial number, order and request. A unit ordered for
+        several people (e.g. new hires) is <b>reserved</b> for its request until it is handed out here; reserved assets are never
+        offered for reuse. IT equipment is handed out by IT asset management, the rest by office &amp; facilities.</p>
+      <div class="rc-filter">
+        <input type="text" id="q" placeholder="Search tag, model, serial, request…" style="width:280px">
+        <select id="status"><option value="">All statuses</option><option>RESERVED</option><option>IN_USE</option><option>IDLE</option><option>SHARED</option></select>
+      </div>
+      <div id="list"><div class="placeholder">Loading…</div></div>
+    </div>
+  </section>
+</main>
+
+<script src="common.js"></script>
+<script>renderNav('assets.html');</script>
+<script>
+  const $ = id => document.getElementById(id);
+  let ALL = [], PEOPLE = [];
+
+  function name(id) { const p = PEOPLE.find(e => e.id === id); return p ? p.name : id; }
+
+  function render() {
+    const q = $('q').value.trim().toLowerCase();
+    const st = $('status').value;
+    const rows = ALL.filter(a => (!st || a.status === st) && (!q || [a.assetTag, a.model, a.serialNumber, a.acquisition && a.acquisition.requestNumber,
+      a.acquisition && a.acquisition.orderNumber, name(a.assignedTo)].some(v => v && String(v).toLowerCase().includes(q))));
+    $('count').textContent = `· ${rows.length} of ${ALL.length}`;
+    $('list').innerHTML = rows.length ? `<table class="rules"><tr><th>Tag</th><th>What</th><th>Serial</th><th>Where / with whom</th><th>Status</th><th>Came from</th><th></th></tr>` +
+      rows.map(a => `<tr><td><b>${esc(a.assetTag)}</b></td><td>${esc(a.type)}<br><span class="muted small">${esc(a.model || '')}</span></td>
+        <td><code>${esc(a.serialNumber || '—')}</code></td>
+        <td>${a.assignedTo ? esc(name(a.assignedTo)) + '<br>' : ''}<span class="muted small">${esc(a.location || a.site || '')}</span></td>
+        <td><span class="rc-tag ${a.status === 'RESERVED' ? 'ai' : a.status === 'IN_USE' ? 'done' : ''}">${esc(a.status)}</span></td>
+        <td class="small">${a.acquisition ? `${esc(a.acquisition.requestNumber || '')} · ${esc(a.acquisition.orderNumber || '')}<br><span class="muted">${esc(a.acquisition.supplierName || '')} · ${money(a.acquisition.unitPrice, a.acquisition.currency || 'EUR')} · received ${esc((a.acquisition.receivedAt || '').slice(0, 10))} by ${esc(a.acquisition.receivedBy || '')}</span>` : '<span class="muted">initial register</span>'}</td>
+        <td>${a.status === 'RESERVED' || a.status === 'IDLE' ? `<select data-assign="${esc(a.assetTag)}"><option value="">Hand out to…</option>${PEOPLE.map(e => `<option value="${esc(e.id)}">${esc(e.name)}</option>`).join('')}</select>` : ''}</td></tr>`).join('') + '</table>'
+      : '<div class="placeholder">No assets match.</div>';
+    $('list').querySelectorAll('[data-assign]').forEach(s => s.onchange = async () => {
+      if (!s.value) return;
+      if (!confirm(`Hand ${s.dataset.assign} to ${name(s.value)}?`)) { s.value = ''; return; }
+      try { await api('POST', `/api/assets/${encodeURIComponent(s.dataset.assign)}/assign`, { employeeId: s.value }, $('staff').value); toast(`${s.dataset.assign} → ${name(s.value)}`); await load(); }
+      catch (e) { toast('Error: ' + e.message); s.value = ''; }
+    });
+  }
+
+  async function load() {
+    history.replaceState(null, '', '?staff=' + encodeURIComponent($('staff').value));
+    ALL = await api('GET', '/api/assets');
+    render();
+  }
+
+  async function init() {
+    const staff = await api('GET', '/api/staff');
+    PEOPLE = await api('GET', '/api/employees');
+    const wanted = new URLSearchParams(location.search).get('staff') || 'S30';
+    $('staff').innerHTML = staff.map(m => `<option value="${esc(m.id)}" ${m.id === wanted ? 'selected' : ''}>${esc(m.name)} · ${esc(m.title)}</option>`).join('');
+    $('staff').addEventListener('change', () => load().catch(e => toast('Error: ' + e.message)));
+    $('q').addEventListener('input', render);
+    $('status').addEventListener('change', render);
+    await load();
+  }
+  init().catch(e => toast('Error: ' + e.message));
+</script>
+</body>
+</html>

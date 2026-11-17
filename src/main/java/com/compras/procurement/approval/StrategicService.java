@@ -31,11 +31,13 @@ public class StrategicService {
 
     private final RequestService requests;
     private final ApprovalService approvals;
+    private final com.compras.procurement.flow.FlowEngine flow;
     private final ApplicationEventPublisher events;
     private final Clock clock;
 
     public StrategicService(RequestService requests, ApprovalService approvals, ApplicationEventPublisher events,
-                            Clock clock) {
+                            Clock clock, com.compras.procurement.flow.FlowEngine flow) {
+        this.flow = flow;
         this.requests = requests;
         this.approvals = approvals;
         this.events = events;
@@ -60,14 +62,11 @@ public class StrategicService {
         events.publishEvent(new Events.StrategicDecided(r.getId(), r.getNumber(), outcome.name(), who.name(), text,
                 Instant.now(clock)));
         boolean catalogRequest = !r.isNonStandard() && r.getSourced() == null;
+        // the route's next steps (sourcing by the category manager, approvals, budget) are the policy's
         return switch (outcome) {
-            case USE_EXISTING_AGREEMENT -> catalogRequest ? approvals.proceedStandard(requestId)
+            case USE_EXISTING_AGREEMENT -> catalogRequest ? flow.strategicDecided(requestId, true)
                     : requests.redirect(requestId, text);
-            case SOURCE -> requests.startSourcing(requestId, StaffRole.CATEGORY_MANAGER.name(),
-                    "Category manager " + who.name() + " runs quotes / a tender" + (text.isEmpty() ? "" : ": " + text));
-            case NEW_FRAMEWORK -> requests.startSourcing(requestId, StaffRole.CATEGORY_MANAGER.name(),
-                    "Category manager " + who.name() + " negotiates a framework agreement; this request is the first "
-                            + "call-off. Follow-up: add it to the catalog once signed" + (text.isEmpty() ? "" : ": " + text));
+            case SOURCE, NEW_FRAMEWORK -> flow.strategicDecided(requestId, false);
             case REJECT -> requests.reject(requestId, "Rejected in strategic review by " + who.name() + ": " + text);
         };
     }
@@ -81,6 +80,6 @@ public class StrategicService {
         if (reason == null || reason.isBlank()) {
             throw new IllegalStateException("Say why it needs a strategic review.");
         }
-        return requests.toStrategicReview(requestId, "MANUAL", List.of(reason.trim()), "Buyer");
+        return flow.detour(requestId, "MANUAL", List.of(reason.trim()), "Buyer");
     }
 }

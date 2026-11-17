@@ -27,6 +27,10 @@ public class Conversation {
     public record PlanItem(String step, String status) {
     }
 
+    /** A request (or internal use) the employee confirmed in this conversation. */
+    public record Submitted(String requestId, String number, String title, String kind, Instant at) {
+    }
+
     @Id
     private String id;
     private String employeeId;
@@ -43,6 +47,10 @@ public class Conversation {
     /** Budget verdicts already obtained, by "department|amount" (verdicts only: no budget figures). */
     private Map<String, String> budgetChecks = new LinkedHashMap<>();
     private String requestId;
+    /** Everything confirmed in this conversation: one conversation can produce several requests. */
+    private List<Submitted> submitted = new ArrayList<>();
+    /** Strategic routes the agent was told about, by reasons key: the employee's turn count at that moment. */
+    private Map<String, Integer> strategicGates = new LinkedHashMap<>();
     private Instant createdAt;
     private Instant updatedAt;
 
@@ -67,8 +75,7 @@ public class Conversation {
     public void waitForAnswers(String toolCallId, List<AgentQuestion> questions) {
         this.pendingToolCallId = toolCallId;
         this.pendingQuestions = new ArrayList<>(questions);
-        this.proposal = null;
-        this.status = Status.AWAITING_ANSWER;
+        this.status = Status.AWAITING_ANSWER; // an unconfirmed proposal card stays on screen
     }
 
     public void waitForConfirmation(String toolCallId, Proposal proposal) {
@@ -78,14 +85,53 @@ public class Conversation {
         this.status = Status.AWAITING_CONFIRMATION;
     }
 
-    /** Clears what the employee was asked; returns the tool call id that must now receive a result. */
+    /**
+     * Clears what the employee was asked (the tool call is answered now); returns that call's id, or null when
+     * nothing was pending. An unconfirmed proposal card is kept: see {@link #clearProposal()}.
+     */
     public String resolvePending() {
         String id = pendingToolCallId;
         pendingToolCallId = null;
         pendingQuestions = new ArrayList<>();
-        proposal = null;
         status = Status.ACTIVE;
         return id;
+    }
+
+    /** The proposal card is gone: confirmed, rejected or replaced. */
+    public void clearProposal() {
+        proposal = null;
+    }
+
+    /** True when the pending tool call is the proposal itself (not a question asked after it). */
+    public boolean proposalCallPending() {
+        return pendingToolCallId != null && proposal != null && getPendingQuestions().isEmpty();
+    }
+
+    public void addSubmitted(Submitted s) {
+        if (submitted == null) {
+            submitted = new ArrayList<>();
+        }
+        submitted.add(s);
+        if (s.requestId() != null) {
+            requestId = s.requestId();
+        }
+    }
+
+    public List<Submitted> getSubmitted() { return submitted == null ? List.of() : submitted; }
+
+    public long userTurns() {
+        return turns.stream().filter(t -> "user".equals(t.role())).count();
+    }
+
+    public Integer strategicGate(String key) {
+        return strategicGates == null ? null : strategicGates.get(key);
+    }
+
+    public void openStrategicGate(String key) {
+        if (strategicGates == null) {
+            strategicGates = new LinkedHashMap<>();
+        }
+        strategicGates.putIfAbsent(key, (int) userTurns());
     }
 
     public boolean isOpen() {

@@ -26,12 +26,48 @@ public class ModelGateway {
     private final ObjectMapper objectMapper;
     private final AuditService audit;
     private ToolCallingLlmClient toolClient;
+    private VisionLlmClient visionClient;
 
     public ModelGateway(LlmClient client, ObjectMapper objectMapper, AuditService audit) {
         this.client = client;
         this.objectMapper = objectMapper;
         this.audit = audit;
         this.toolClient = client instanceof ToolCallingLlmClient t ? t : null;
+        this.visionClient = client instanceof VisionLlmClient v ? v : null;
+    }
+
+    /** Lets tests plug in an image-reading client. */
+    public void setVisionClient(VisionLlmClient visionClient) {
+        this.visionClient = visionClient;
+    }
+
+    /**
+     * Structured output from text plus one image. The image is not written to the audit log (only that there was
+     * one and its size); the reply is.
+     */
+    public <T> T callWithImage(String purpose, String correlationId, List<ChatMessage> messages, String imageDataUrl,
+                               Class<T> type) {
+        if (visionClient == null) {
+            throw new LlmUnavailableException("The configured model client cannot read images.");
+        }
+        long start = System.currentTimeMillis();
+        String raw = null;
+        Map<String, Object> usage = null;
+        String label = purpose + " (image, " + (imageDataUrl == null ? 0 : imageDataUrl.length() / 1024) + " KB)";
+        try {
+            LlmResponse response = visionClient.completeJsonWithImage(messages, imageDataUrl);
+            raw = response.content();
+            usage = response.usage();
+            T parsed = parse(raw, type);
+            record(label, correlationId, start, true, raw, usage, null);
+            return parsed;
+        } catch (JsonProcessingException e) {
+            record(label, correlationId, start, false, raw, usage, e.getOriginalMessage());
+            throw new LlmUnavailableException("The model did not return valid JSON.", e);
+        } catch (LlmUnavailableException e) {
+            record(label, correlationId, start, false, raw, usage, e.getMessage());
+            throw e;
+        }
     }
 
     /** Lets tests (or another provider) plug in a tool-calling client. */

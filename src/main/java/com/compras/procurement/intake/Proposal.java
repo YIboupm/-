@@ -36,7 +36,9 @@ public record Proposal(
         /** Researched products for a special request, recommended first. */
         List<com.compras.procurement.request.SuggestedModel> candidates,
         /** WITHIN_BUDGET / OVER_BUDGET / NOT_DISCLOSED: the only budget information the employee gets. */
-        String budget
+        String budget,
+        /** Lines of a special request (a desk, a chair...); empty: the request is one line. */
+        List<com.compras.procurement.request.SpecialItem> items
 ) {
     public enum Type { STANDARD, SPECIAL, INTERNAL_USE }
 }

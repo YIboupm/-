@@ -40,8 +40,22 @@ public record NewRequest(
         /** What could have covered the need and why it was not used. */
         List<AlternativeConsidered> alternativesConsidered,
         /** Researched products for a special request. */
-        List<SuggestedModel> suggestedModels
+        List<SuggestedModel> suggestedModels,
+        /** The lines of a special request (a desk, a chair...). Empty: one line, the request itself. */
+        List<SpecialItem> items
 ) {
+    public NewRequest(String channel, String conversationId, EmployeeContext requester, CategoryDefinition category,
+                      Map<String, Object> attributes, Map<String, String> attributeSources, List<ResolvedLine> lines,
+                      BigDecimal estimatedTotal, String currency, List<RuleViolation> warnings,
+                      List<String> specialRequirements, List<RequirementCheck> requirementChecks,
+                      String originalRequest, String mappingRationale, String title,
+                      List<com.compras.procurement.matching.Requirement> requirements,
+                      List<AlternativeConsidered> alternativesConsidered, List<SuggestedModel> suggestedModels) {
+        this(channel, conversationId, requester, category, attributes, attributeSources, lines, estimatedTotal,
+                currency, warnings, specialRequirements, requirementChecks, originalRequest, mappingRationale, title,
+                requirements, alternativesConsidered, suggestedModels, List.of());
+    }
+
     public NewRequest(String channel, String conversationId, EmployeeContext requester, CategoryDefinition category,
                       Map<String, Object> attributes, Map<String, String> attributeSources, List<ResolvedLine> lines,
                       BigDecimal estimatedTotal, String currency, List<RuleViolation> warnings,
@@ -49,6 +63,6 @@ public record NewRequest(
                       String originalRequest, String mappingRationale) {
         this(channel, conversationId, requester, category, attributes, attributeSources, lines, estimatedTotal,
                 currency, warnings, specialRequirements, requirementChecks, originalRequest, mappingRationale,
-                null, List.of(), List.of(), List.of());
+                null, List.of(), List.of(), List.of(), List.of());
     }
 }

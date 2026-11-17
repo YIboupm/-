@@ -10,7 +10,9 @@ public enum StaffRole {
     CLOUD_PLATFORM("Cloud platform lead"),
     IT_SECURITY("IT security & data protection"),
     BUYER("Buyer"),
-    CATEGORY_MANAGER("Category manager");
+    CATEGORY_MANAGER("Category manager"),
+    /** Receives non-IT deliveries (furniture, appliances, consumables) and keeps that part of the register. */
+    FACILITIES("Office & facilities");
 
     private final String label;
 

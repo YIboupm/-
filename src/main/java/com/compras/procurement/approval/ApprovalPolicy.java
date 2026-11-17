@@ -1,5 +1,9 @@
 package com.compras.procurement.approval;
 
+import com.compras.procurement.policy.Facts;
+import com.compras.procurement.policy.PolicySet;
+import com.compras.procurement.policy.PolicySource;
+import com.compras.procurement.policy.RuleEngine;
 import com.compras.procurement.request.ApprovalStep;
 import org.springframework.stereotype.Component;
 
@@ -10,11 +14,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The approval matrix as code: which roles must sign off, in which order, and who that is for this request.
- * Pure (no I/O), so every rule is unit-tested.
+ * The approval matrix: which roles must sign off, in which order, and who that is for this request. Which roles is
+ * data (the approval rules of the {@link PolicySet}); who that is, and that nobody signs twice or for themselves, is
+ * code. Pure (no I/O), so every rule is unit-tested.
  *
- * <p>Segregation of duties: nobody approves their own request, and one person never holds two steps of the
- * same request; such a step escalates to the next level.
+ * <p>Segregation of duties (not configurable): nobody approves their own request, and one person never holds two
+ * steps of the same decision (the need, or the price); such a step escalates to the next level.
  */
 @Component
 public class ApprovalPolicy {
@@ -37,83 +42,91 @@ public class ApprovalPolicy {
                     java.util.Map.of());
         }
 
-        String attribute(String name) {
-            Object v = attributes == null ? null : attributes.get(name);
-            return v == null ? "" : String.valueOf(v);
+        public Map<String, Object> facts() {
+            return Facts.of(!catalogItem, catalogItem, false, amount, categoryCode, department, overBudget, attributes);
         }
     }
 
-    private final ApprovalProperties matrix;
+    /** A role the rules ask for, why, and which rules asked. */
+    public record Needed(StaffRole role, String reason, List<String> rules) {
+    }
 
-    public ApprovalPolicy(ApprovalProperties matrix) {
-        this.matrix = matrix;
+    private final PolicySource policies;
+
+    public ApprovalPolicy(PolicySource policies) {
+        this.policies = policies;
     }
 
     public List<ApprovalStep> steps(Input in, List<StaffMember> staff) {
-        Map<StaffRole, String> needed = new LinkedHashMap<>(); // role -> reason, in decision order
-        if (NEED.equals(in.stage())) {
-            needed.put(StaffRole.LINE_MANAGER, "Approve the need before a buyer sources and prices it");
-        } else {
-            BigDecimal amount = in.amount() == null ? BigDecimal.ZERO : in.amount();
-            boolean cloud = in.categoryCode() != null && matrix.cloudCategories().contains(in.categoryCode());
-            // cloud is never touchless: the platform team has to set up the account anyway
-            boolean auto = in.catalogItem() && !cloud && !in.overBudget()
-                    && amount.compareTo(matrix.autoApproveUpTo()) <= 0;
-            if (auto) {
-                return List.of();
-            }
-            needed.put(StaffRole.LINE_MANAGER, "Budget holder for " + in.department());
-            if (in.categoryCode() != null && matrix.itCategories().contains(in.categoryCode())) {
-                needed.put(StaffRole.IT_ASSET_MANAGER, "IT equipment: compatibility, security and asset register");
-            }
-            if (in.categoryCode() != null && matrix.cloudCategories().contains(in.categoryCode())) {
-                needed.put(StaffRole.CLOUD_PLATFORM, "Cloud: account set-up in the landing zone, sizing and cost alerts");
-                String data = in.attribute("dataClassification");
-                String region = in.attribute("region");
-                boolean sensitive = data.equals("Confidential") || data.equals("Restricted");
-                boolean outsideEu = !region.isEmpty() && !region.equals("Spain") && !region.equals("Other EU");
-                if (sensitive || (outsideEu && !data.equals("Public"))) {
-                    needed.put(StaffRole.IT_SECURITY, "Data protection: " + (data.isEmpty() ? "unclassified" : data)
-                            + " data" + (outsideEu ? " outside the EU (" + region + ")" : ""));
-                }
-            }
-            if (amount.compareTo(matrix.managerUpTo()) > 0) {
-                needed.put(StaffRole.DEPARTMENT_HEAD, "Over " + euros(matrix.managerUpTo()));
-                needed.put(StaffRole.FINANCE_CONTROLLER, "Over " + euros(matrix.managerUpTo()));
-            }
-            if (in.overBudget()) {
-                needed.merge(StaffRole.FINANCE_CONTROLLER, "Over the department's quarterly budget",
-                        (a, b) -> a + "; " + b);
-            }
-            if (amount.compareTo(matrix.cfoAbove()) > 0) {
-                needed.put(StaffRole.CFO, "Over " + euros(matrix.cfoAbove()));
-            }
-        }
+        return steps(policies.active(), in, staff);
+    }
 
+    public List<ApprovalStep> steps(PolicySet policy, Input in, List<StaffMember> staff) {
         List<ApprovalStep> done = in.alreadyDecided() == null ? List.of() : in.alreadyDecided();
         List<ApprovalStep> chain = new ArrayList<>(done);
-        for (Map.Entry<StaffRole, String> e : needed.entrySet()) {
-            StaffRole role = e.getKey();
-            if (done.stream().anyMatch(s -> s.isApproved() && s.role().equals(role.name()))) {
+        for (Needed n : roles(policy, in.stage(), in.facts())) {
+            StaffRole role = n.role();
+            // approved in this stage already (e.g. the chain is rebuilt after a step was added). An approval of the
+            // need is not an approval of the price: the budget holder is asked again once the price is known.
+            if (done.stream().anyMatch(s -> s.isApproved() && s.role().equals(role.name())
+                    && java.util.Objects.equals(s.stage(), in.stage()))) {
                 continue; // e.g. the line manager already approved the need: not asked twice
             }
             StaffMember who = resolve(role, in, chain, staff);
             chain.add(ApprovalStep.pending(who.role().name(), who.id(), who.name(), who.title(),
-                    who.role() == role ? e.getValue() : e.getValue() + " (escalated from " + role.label() + ")",
-                    in.stage()));
+                    who.role() == role ? n.reason() : n.reason() + " (escalated from " + role.label() + ")",
+                    in.stage(), n.rules()));
         }
         return chain;
     }
 
+    /** Did this approved step knowingly accept going over the department's budget? */
+    public static boolean coversOverBudget(PolicySet policy, ApprovalStep step) {
+        if (!step.isApproved()) {
+            return false;
+        }
+        if (step.rules() == null) { // requests from before the rules were data
+            return (step.role().equals(StaffRole.FINANCE_CONTROLLER.name()) || step.role().equals(StaffRole.CFO.name()))
+                    && step.reason() != null && step.reason().toLowerCase().contains("budget");
+        }
+        return step.rules().contains(ApprovalStep.BUDGET_RACE_RULE) || policy.approvals().stream()
+                .anyMatch(r -> r.budgetDecision() && step.rules().contains(r.id()));
+    }
+
+    /** The roles the rules ask for at this stage, in signing order. Empty: nobody (auto-approved). */
+    public List<Needed> roles(PolicySet policy, String stage, Map<String, Object> facts) {
+        Map<StaffRole, Needed> needed = new LinkedHashMap<>();
+        boolean onlyWaivable = true;
+        for (PolicySet.ApprovalRule rule : policy.approvals()) {
+            if (!stage.equals(rule.stage()) || !RuleEngine.matches(rule.when(), facts)) {
+                continue;
+            }
+            onlyWaivable &= rule.waivableStep();
+            StaffRole role = StaffRole.valueOf(rule.role());
+            String reason = RuleEngine.render(rule.reason(), rule.when(), facts);
+            needed.merge(role, new Needed(role, reason, List.of(rule.id())), (a, b) -> {
+                List<String> ids = new ArrayList<>(a.rules());
+                ids.addAll(b.rules());
+                return new Needed(role, a.reason() + "; " + b.reason(), ids);
+            });
+        }
+        // Mandatory checks (category, data, amount, budget) take precedence over the small-purchase shortcut.
+        boolean auto = onlyWaivable && policy.autoApprovals().stream()
+                .anyMatch(a -> stage.equals(a.stage()) && RuleEngine.matches(a.when(), facts));
+        return auto ? List.of() : List.copyOf(needed.values());
+    }
+
     /** The person for a role in this department, escalating past anyone who may not decide. */
-    StaffMember resolve(StaffRole role, Input in, List<ApprovalStep> chain, List<StaffMember> staff) {
+    public StaffMember resolve(StaffRole role, Input in, List<ApprovalStep> chain, List<StaffMember> staff) {
         StaffRole current = role;
         for (int guard = 0; guard < 5; guard++) {
             StaffRole wanted = current;
             StaffMember candidate = staff.stream()
                     .filter(m -> m.role() == wanted && m.actsFor(in.department()))
                     .filter(m -> !m.name().equalsIgnoreCase(in.requesterName()))
-                    .filter(m -> chain.stream().noneMatch(s -> s.approverId().equals(m.id())))
+                    // one person holds one step per decision: approving the need and later the price is normal
+                    .filter(m -> chain.stream().noneMatch(s -> s.approverId().equals(m.id())
+                            && java.util.Objects.equals(s.stage(), in.stage()) && !"SUPERSEDED".equals(s.status())))
                     .findFirst().orElse(null);
             if (candidate != null) {
                 return candidate;
@@ -124,9 +137,5 @@ public class ApprovalPolicy {
             current = current.escalation();
         }
         throw new IllegalStateException("No approver available for " + role.label() + " in " + in.department());
-    }
-
-    private static String euros(BigDecimal amount) {
-        return "€" + String.format("%,.0f", amount);
     }
 }

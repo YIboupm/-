@@ -14,6 +14,11 @@ public record ConversationView(
         Proposal proposal,
         String requestId,
         String requestNumber,
-        String requestStatus
+        String requestStatus,
+        List<SubmittedView> submitted
 ) {
+    /** One request confirmed in this conversation, with where it stands now. */
+    public record SubmittedView(String requestId, String number, String title, String kind, String status,
+                                String nextStep) {
+    }
 }

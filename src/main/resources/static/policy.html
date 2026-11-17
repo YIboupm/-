@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Procurement Hub · Policy</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="brand">Procurement<span>Hub</span></div>
+  <nav></nav>
+  <div class="who">Signed in as <select id="staff"></select></div>
+</header>
+
+<main style="display:block">
+  <section class="panel" style="margin-bottom:16px">
+    <h2>Procurement policy as data <span class="muted small" id="inForce"></span></h2>
+    <div class="body">
+      <p class="muted small">Which route a request takes, who approves it and how many quotes it needs are rules in a versioned
+        policy, not code. A route is a sequence of building blocks. Every request keeps the version it was submitted under.
+        Not configurable: nobody approves their own request, budget figures never reach the assistant, nothing is ordered
+        without a budget reservation, and a strategic route is discussed with the employee first.</p>
+      <div class="pol-versions">Version <select id="version"></select> <span id="versionInfo" class="muted small"></span></div>
+    </div>
+  </section>
+
+  <section class="panel" style="margin-bottom:16px">
+    <h2>Routes · building blocks in order</h2>
+    <div class="body" id="routes"></div>
+  </section>
+
+  <section class="panel" style="margin-bottom:16px">
+    <h2>Rules</h2>
+    <div class="body" id="rules"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Change the policy <span class="muted small">policy owners: category manager, CFO</span></h2>
+    <div class="body">
+      <p class="muted small">1 · Start a draft from the version in force. 2 · Edit the rules or routes. 3 · Save &amp; check: structure,
+        the standard cases, and a replay of every past request. 4 · Publish. Requests already in flight finish under their own version.</p>
+      <div class="pol-actions">
+        <input type="text" id="newVersion" placeholder="New version, e.g. 2026.12" style="width:200px">
+        <input type="text" id="newNote" placeholder="What changes and why" style="flex:1;min-width:240px">
+        <button id="startDraft">Start draft from the version in force</button>
+      </div>
+      <div id="editorWrap" style="display:none">
+        <textarea class="pol-editor" id="editor" spellcheck="false"></textarea>
+        <div class="pol-actions">
+          <button class="primary" id="saveCheck">Save &amp; check</button>
+          <button id="publish" disabled>Publish</button>
+          <button id="discard">Delete draft</button>
+          <span class="muted small" id="vocab"></span>
+        </div>
+        <div class="pol-report" id="report"></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="common.js"></script>
+<script>renderNav('policy.html');</script>
+<script>
+  const $ = id => document.getElementById(id);
+  const OP = { eq: '=', ne: '≠', gt: '>', gte: '≥', lt: '<', lte: '≤', in: 'in', notIn: 'not in', exists: 'is known', missing: 'is not known' };
+  let shown = null;        // the version on screen
+  let lastReport = null;   // the check of the draft on screen
+
+  function when(conditions) {
+    if (!conditions || !conditions.length) return '<span class="muted">always</span>';
+    return conditions.map(c => `<span class="pol-when">${esc(c.fact)} ${OP[c.op] || esc(c.op)}${c.value === null || c.value === undefined ? '' : ' ' + esc(Array.isArray(c.value) ? '[' + c.value.join(', ') + ']' : String(c.value))}</span>`).join(' <span class="muted">and</span> ');
+  }
+
+  function renderVersion(p) {
+    shown = p;
+    $('versionInfo').textContent = `${p.status}${p.effectiveFrom ? ' · effective ' + p.effectiveFrom : ''}${p.basedOn ? ' · based on ' + p.basedOn : ''}${p.publishedBy ? ' · published by ' + p.publishedBy : ''}${p.note ? ' · ' + p.note : ''}`;
+    $('routes').innerHTML = Object.entries(p.routes || {}).map(([name, steps]) =>
+      `<div class="pol-route flow-steps"><b>${esc(name)}</b>` + steps.map(s =>
+        `<span class="step-chip block" title="${esc(s.label || '')}">${esc(s.type)}${s.stage ? ' · ' + esc(s.stage) : ''}${s.owner ? ' · ' + esc(s.owner) : ''}</span>`)
+        .join('<span class="step-arrow">›</span>') + '</div>').join('');
+    const routing = `<div class="section-title">Routing · the first matching rule decides the route (policy 4, 7)</div>
+      <table class="rules"><tr><th>Rule</th><th>When</th><th>Route</th><th>Reason shown</th><th>§</th></tr>` +
+      (p.routing || []).map(r => `<tr><td><code>${esc(r.id)}</code></td><td>${when(r.when)}</td><td><b>${esc(r.route)}</b></td><td>${esc(r.reason || '')}</td><td>${esc(r.section || '')}</td></tr>`).join('') + '</table>';
+    const approvals = `<div class="section-title">Approvers · top to bottom is the signing order (policy 6, 8, 9)</div>
+      <table class="rules"><tr><th>Rule</th><th>Stage</th><th>When</th><th>Approver</th><th>Reason shown to the approver</th><th>§</th></tr>` +
+      (p.approvals || []).map(r => `<tr><td><code>${esc(r.id)}</code></td><td>${esc(r.stage)}</td><td>${when(r.when)}</td><td><b>${esc(ROLE_LABEL[r.role] || r.role)}</b>${r.waivable ? ' <span class="muted small">(waivable)</span>' : ''}${r.coversOverBudget ? ' <span class="muted small">(the over-budget decision)</span>' : ''}</td><td>${esc(r.reason || '')}</td><td>${esc(r.section || '')}</td></tr>`).join('') + '</table>';
+    const auto = `<div class="section-title">Auto-approval · only when no other approver than a waivable one is needed</div>
+      <table class="rules"><tr><th>Rule</th><th>Stage</th><th>When</th><th>Reason</th></tr>` +
+      (p.autoApprovals || []).map(r => `<tr><td><code>${esc(r.id)}</code></td><td>${esc(r.stage)}</td><td>${when(r.when)}</td><td>${esc(r.reason || '')}</td></tr>`).join('') + '</table>';
+    const quotes = `<div class="section-title">Quotes an award needs (policy 5) · otherwise one</div>
+      <table class="rules"><tr><th>Rule</th><th>When</th><th>Quotes</th></tr>` +
+      (p.quotes || []).map(r => `<tr><td><code>${esc(r.id)}</code></td><td>${when(r.when)}</td><td>${r.quotes}</td></tr>`).join('') + '</table>';
+    const params = `<div class="muted small">Split check window (policy 2): ${esc(String((p.parameters || {}).splitWindowDays ?? 30))} days ·
+      ${(p.cases || []).length} standard cases this version must get right before it can be published.</div>`;
+    const assets = `<div class="section-title">Goods-in · the first matching rule decides (policy 13)</div>
+      <table class="rules"><tr><th>Rule</th><th>When</th><th>Registered as asset</th><th>Received by</th><th>Reason shown</th></tr>` +
+      (p.assets || []).map(r => `<tr><td><code>${esc(r.id)}</code></td><td>${when(r.when)}</td><td>${r.track ? '<b>yes</b>' : 'no'}</td><td>${esc(ROLE_LABEL[r.receiver] || r.receiver)}</td><td>${esc(r.reason || '')}</td></tr>`).join('') + '</table>';
+    $('rules').innerHTML = routing + approvals + auto + quotes + assets + params;
+    const draft = p.status === 'DRAFT';
+    $('editorWrap').style.display = draft ? '' : 'none';
+    if (draft) {
+      const { status, publishedBy, publishedAt, ...editable } = p;
+      $('editor').value = JSON.stringify(editable, null, 2);
+      $('report').innerHTML = '';
+      $('publish').disabled = true;
+      lastReport = null;
+    }
+  }
+
+  function renderReport(rep) {
+    lastReport = rep;
+    let h = '';
+    if (rep.problems.length) {
+      h += `<div class="bad"><b>Not publishable · ${rep.problems.length} problem(s)</b><ul>${rep.problems.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>`;
+    } else {
+      h += `<div class="good">Structure and guarantees: OK.</div>`;
+      h += rep.failedCases.length
+        ? `<div class="bad"><b>${rep.failedCases.length} of ${rep.casesRun} standard cases fail</b> (fix the rule, or update the case if the change is intended)<ul>${rep.failedCases.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>`
+        : `<div class="good">Standard cases: ${rep.casesRun} of ${rep.casesRun} pass.</div>`;
+      h += `<div class="section-title">Replay · ${rep.requestsReplayed} past requests judged again, ${rep.replay.length} would come out differently</div>`;
+      h += rep.replay.length ? `<table class="rules"><tr><th>Request</th><th>Status today</th><th>Judged under</th><th>What would differ under ${esc(rep.version)}</th></tr>` +
+        rep.replay.map(c => `<tr><td><b>${esc(c.number)}</b><br><span class="muted small">${esc(c.title || '')}</span></td><td>${esc(REQ_STATUS[c.status] || c.status)}</td><td>${esc(c.judgedUnder)}</td><td>${c.differences.map(esc).join('<br>')}</td></tr>`).join('') + '</table>'
+        + '<div class="muted small">Nothing changes for these requests: they keep the version they were submitted under. The replay shows what the new rules mean in practice.</div>'
+        : '<div class="muted small">No past request would be judged differently.</div>';
+    }
+    $('report').innerHTML = h;
+    $('publish').disabled = !rep.publishable;
+    $('publish').textContent = rep.publishable ? `Publish ${rep.version} (${rep.replay.length} change(s) reviewed)` : 'Publish';
+  }
+
+  async function loadVersions(select) {
+    const versions = await api('GET', '/api/policy/versions');
+    const active = versions.find(v => v.status === 'ACTIVE');
+    $('inForce').textContent = active ? `· in force: ${active.version}` : '';
+    const wanted = select || (shown && versions.some(v => v.version === shown.version) ? shown.version : active && active.version);
+    $('version').innerHTML = versions.map(v => `<option value="${esc(v.version)}" ${v.version === wanted ? 'selected' : ''}>${esc(v.version)} · ${esc(v.status)}</option>`).join('');
+    if ($('version').value) renderVersion(await api('GET', '/api/policy/versions/' + encodeURIComponent($('version').value)));
+  }
+
+  const guard = fn => async () => { try { await fn(); } catch (e) { toast('Error: ' + e.message); } };
+
+  $('startDraft').onclick = guard(async () => {
+    const version = $('newVersion').value.trim();
+    if (!version) { toast('Give the new version a name, e.g. 2026.12'); return; }
+    const draft = await api('POST', '/api/policy/drafts/from-active', { version, note: $('newNote').value.trim() || null }, $('staff').value);
+    toast(`Draft ${draft.version} created`);
+    await loadVersions(draft.version);
+  });
+
+  $('saveCheck').onclick = guard(async () => {
+    let body;
+    try { body = JSON.parse($('editor').value); } catch (e) { toast('Not valid JSON: ' + e.message); return; }
+    const saved = await api('POST', '/api/policy/drafts', body, $('staff').value);
+    const text = $('editor').value;
+    await loadVersions(saved.policy.version);
+    $('editor').value = text;
+    renderReport(saved.report);
+  });
+
+  $('publish').onclick = guard(async () => {
+    if (!lastReport || !confirm(`Publish ${lastReport.version}? New requests are judged under it from now on. ${lastReport.replay.length} past request(s) would have come out differently.`)) return;
+    const p = await api('POST', `/api/policy/versions/${encodeURIComponent(lastReport.version)}/publish`, { acknowledgedChanges: lastReport.replay.length }, $('staff').value);
+    toast(`${p.version} is now in force`);
+    await loadVersions(p.version);
+  });
+
+  $('discard').onclick = guard(async () => {
+    if (!shown || shown.status !== 'DRAFT' || !confirm(`Delete draft ${shown.version}?`)) return;
+    await api('DELETE', '/api/policy/drafts/' + encodeURIComponent(shown.version), null, $('staff').value);
+    shown = null;
+    await loadVersions();
+  });
+
+  $('version').addEventListener('change', guard(async () => renderVersion(await api('GET', '/api/policy/versions/' + encodeURIComponent($('version').value)))));
+
+  async function init() {
+    const staff = await api('GET', '/api/staff');
+    const wanted = new URLSearchParams(location.search).get('staff') || 'S41';
+    $('staff').innerHTML = staff.map(m => `<option value="${esc(m.id)}" ${m.id === wanted ? 'selected' : ''}>${esc(m.name)} · ${esc(m.title)}</option>`).join('');
+    const v = await api('GET', '/api/policy/vocabulary');
+    $('vocab').textContent = `Facts: ${Object.keys(v.facts).join(', ')}, attr.<name> · Steps: ${v.stepTypes.join(', ')}`;
+    await loadVersions();
+  }
+  init().catch(e => toast('Error: ' + e.message));
+</script>
+</body>
+</html>

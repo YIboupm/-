@@ -13,7 +13,7 @@ import java.util.Map;
 
 /**
  * The quarterly budget pool and its ledger: reserve on approval, commit on order (difference released),
- * release on rejection or cancellation. Finance-internal: requester-facing code uses {@link BudgetGate}.
+ * release on rejection or cancellation, spend on delivery. Finance-internal: requester-facing code uses {@link BudgetGate}.
  */
 @Service
 public class BudgetService {
@@ -68,73 +68,115 @@ public class BudgetService {
      */
     public Outcome reserve(String requestId, String requestNumber, String department, BigDecimal amount,
                            boolean allowOverBudget, String actor) {
-        String key = requestId + ":" + BudgetEntry.Type.RESERVE;
-        if (!store.entriesForRequest(requestId).stream().filter(e -> e.id().equals(key)).toList().isEmpty()) {
-            return Outcome.ALREADY_RESERVED;
-        }
-        BudgetAccount account = accountFor(department);
+        String accountId = accountFor(department).id();
         long amt = cents(amount);
-        boolean fits = store.tryReserve(account.id(), amt);
-        if (!fits) {
-            if (!allowOverBudget) {
-                return Outcome.INSUFFICIENT;
-            }
-            store.move(account.id(), -amt, amt, 0, 0);
+        if (amt < 0) throw new IllegalArgumentException("Negative reservation");
+        String key = key(requestId, cycleOf(requestId), BudgetEntry.Type.RESERVE);
+        for (int retry = 0; retry < 100; retry++) {
+            BudgetAccount account = store.account(accountId).orElseThrow();
+            if (account.journal().stream().anyMatch(e -> e.id().equals(key))) return Outcome.ALREADY_RESERVED;
+            boolean fits = account.available() >= amt;
+            if (!fits && !allowOverBudget) return Outcome.INSUFFICIENT;
+            BudgetEntry entry = new BudgetEntry(key, accountId, requestId, requestNumber, BudgetEntry.Type.RESERVE,
+                    amt, 0, !fits, actor, fits ? "Approved estimate held" : "Held over budget (approved by finance)",
+                    Instant.now(clock));
+            if (store.compareAndSet(account, account.append(entry, -amt, amt, 0)))
+                return fits ? Outcome.RESERVED : Outcome.RESERVED_OVER_BUDGET;
         }
-        BudgetEntry entry = new BudgetEntry(key, account.id(), requestId, requestNumber, BudgetEntry.Type.RESERVE,
-                amt, 0, !fits, actor, fits ? "Approved estimate held" : "Held over budget (approved by finance)",
-                Instant.now(clock));
-        if (!store.insert(entry)) {
-            store.move(account.id(), amt, -amt, 0, 0); // a concurrent duplicate won: undo
-            return Outcome.ALREADY_RESERVED;
-        }
-        return fits ? Outcome.RESERVED : Outcome.RESERVED_OVER_BUDGET;
+        throw new IllegalStateException("Budget contention: retry the operation");
     }
 
-    /** Ordered at the real price: the reservation becomes a commitment and the difference goes back. */
     public void commit(String requestId, String requestNumber, String department, BigDecimal actual, String actor) {
-        Position held = position(requestId);
-        String accountId = accountOf(requestId, department);
-        long amt = cents(actual);
-        long returned = held.reserved() - amt;
-        BudgetEntry entry = new BudgetEntry(requestId + ":" + BudgetEntry.Type.COMMIT, accountId, requestId,
-                requestNumber, BudgetEntry.Type.COMMIT, amt, returned, false, actor,
-                returned > 0 ? "Ordered below the estimate: difference returned"
-                        : returned < 0 ? "Ordered above the estimate: difference charged" : "Ordered at the estimate",
-                Instant.now(clock));
-        if (store.insert(entry)) {
-            store.move(accountId, held.reserved() - amt, -held.reserved(), amt, 0);
-        }
+        finish(requestId, requestNumber, accountOf(requestId, department), cents(actual), actor, null, true);
     }
 
-    /** Rejected or cancelled: everything still held is released. */
     public void release(String requestId, String requestNumber, String actor, String note) {
-        Position held = position(requestId);
-        if (held.reserved() == 0) {
-            return;
+        var entries = store.entriesForRequest(requestId);
+        if (entries.isEmpty()) return;
+        finish(requestId, requestNumber, accountOf(requestId, null), 0, actor, note, false);
+    }
+
+    /** A request's reservation has exactly one terminal movement: COMMIT or RELEASE. */
+    private void finish(String requestId, String number, String accountId, long amount,
+                        String actor, String note, boolean commit) {
+        if (amount < 0) throw new IllegalArgumentException("Negative commitment");
+        int c = cycleOf(requestId);
+        for (int retry = 0; retry < 100; retry++) {
+            BudgetAccount account = store.account(accountId).orElseThrow();
+            var entries = current(account, requestId, c);
+            if (entries.stream().anyMatch(e -> e.type() != BudgetEntry.Type.RESERVE)) return;
+            var reservation = entries.stream().filter(e -> e.type() == BudgetEntry.Type.RESERVE).findFirst();
+            if (reservation.isEmpty()) {
+                if (commit) throw new IllegalStateException("Cannot commit without a reservation");
+                return;
+            }
+            long held = reservation.get().amount();
+            var type = commit ? BudgetEntry.Type.COMMIT : BudgetEntry.Type.RELEASE;
+            BudgetEntry entry = new BudgetEntry(key(requestId, c, type), accountId, requestId, number, type,
+                    commit ? amount : held, held - amount, false, actor,
+                    commit ? "Reservation committed; price difference returned or charged" : note, Instant.now(clock));
+            if (store.compareAndSet(account, account.append(entry, held - amount, -held, amount))) return;
         }
+        throw new IllegalStateException("Budget contention: retry the operation");
+    }
+
+    /** Delivered: what was committed is now spent. Idempotent; nothing happens without a commitment. */
+    public void spend(String requestId, String requestNumber, String actor) {
+        var entries = store.entriesForRequest(requestId);
+        if (entries.isEmpty()) return;
         String accountId = accountOf(requestId, null);
-        BudgetEntry entry = new BudgetEntry(requestId + ":" + BudgetEntry.Type.RELEASE, accountId, requestId,
-                requestNumber, BudgetEntry.Type.RELEASE, held.reserved(), held.reserved(), false, actor, note,
-                Instant.now(clock));
-        if (store.insert(entry)) {
-            store.move(accountId, held.reserved(), -held.reserved(), 0, 0);
+        int c = cycleOf(requestId);
+        for (int retry = 0; retry < 100; retry++) {
+            BudgetAccount account = store.account(accountId).orElseThrow();
+            var mine = current(account, requestId, c);
+            if (mine.stream().anyMatch(e -> e.type() == BudgetEntry.Type.SPEND)) return;
+            var commit = mine.stream().filter(e -> e.type() == BudgetEntry.Type.COMMIT).findFirst();
+            if (commit.isEmpty()) return;
+            long amount = commit.get().amount();
+            BudgetEntry entry = new BudgetEntry(key(requestId, c, BudgetEntry.Type.SPEND), accountId, requestId,
+                    requestNumber, BudgetEntry.Type.SPEND, amount, 0, false, actor,
+                    "Delivered and checked in: the commitment is now spent", Instant.now(clock));
+            if (store.compareAndSet(account, account.appendSpend(entry, amount))) return;
         }
+        throw new IllegalStateException("Budget contention: retry the operation");
+    }
+
+    /**
+     * The order was cancelled before delivery: its commitment goes back to the department, and the request's next
+     * reservation starts a new cycle. Returns the cents released (0 when nothing was committed).
+     */
+    public long cancelCommitment(String requestId, String requestNumber, String actor, String reason) {
+        var entries = store.entriesForRequest(requestId);
+        if (entries.isEmpty()) return 0;
+        String accountId = accountOf(requestId, null);
+        int c = cycleOf(requestId);
+        for (int retry = 0; retry < 100; retry++) {
+            BudgetAccount account = store.account(accountId).orElseThrow();
+            var mine = current(account, requestId, c);
+            if (mine.stream().anyMatch(e -> e.type() == BudgetEntry.Type.SPEND)) {
+                throw new IllegalStateException("The goods were delivered: the spend cannot be cancelled.");
+            }
+            var commit = mine.stream().filter(e -> e.type() == BudgetEntry.Type.COMMIT).findFirst();
+            if (commit.isEmpty()) return 0;
+            long amount = commit.get().amount();
+            BudgetEntry entry = new BudgetEntry(requestId + ":" + (c + 1) + ":" + BudgetEntry.Type.CANCEL, accountId,
+                    requestId, requestNumber, BudgetEntry.Type.CANCEL, amount, amount, false, actor,
+                    "Order cancelled before delivery: " + reason, Instant.now(clock));
+            if (store.compareAndSet(account, account.append(entry, amount, 0, -amount))) return amount;
+        }
+        throw new IllegalStateException("Budget contention: retry the operation");
     }
 
     public Position position(String requestId) {
-        long reserved = 0;
-        long committed = 0;
-        for (BudgetEntry e : store.entriesForRequest(requestId)) {
-            switch (e.type()) {
-                case RESERVE -> reserved += e.amount();
-                case COMMIT -> {
-                    reserved = 0;
-                    committed += e.amount();
-                }
-                case RELEASE -> reserved = 0;
-            }
-        }
+        var all = store.entriesForRequest(requestId);
+        if (all.isEmpty()) return new Position(0, 0);
+        int c = cycle(all);
+        var entries = store.account(accountOf(requestId, null)).map(a -> current(a, requestId, c)).orElse(all);
+        long committed = entries.stream().filter(e -> e.type() == BudgetEntry.Type.COMMIT)
+                .mapToLong(BudgetEntry::amount).sum()
+                - entries.stream().filter(e -> e.type() == BudgetEntry.Type.SPEND).mapToLong(BudgetEntry::amount).sum();
+        boolean terminal = entries.stream().anyMatch(e -> e.type() != BudgetEntry.Type.RESERVE);
+        long reserved = terminal ? 0 : entries.stream().mapToLong(BudgetEntry::amount).sum();
         return new Position(reserved, committed);
     }
 
@@ -152,8 +194,35 @@ public class BudgetService {
 
     // ------------------------------------------------------------------ internals
 
+    /** How many times this request's order was cancelled and sourced again: each time starts a new cycle. */
+    private static int cycle(List<BudgetEntry> requestEntries) {
+        return (int) requestEntries.stream().filter(e -> e.type() == BudgetEntry.Type.CANCEL).count();
+    }
+
+    /** Idempotency key of a movement in a cycle (cycle 0 keeps the original keys). */
+    private static String key(String requestId, int cycle, BudgetEntry.Type type) {
+        return cycle == 0 ? requestId + ":" + type : requestId + ":" + cycle + ":" + type;
+    }
+
+    private int cycleOf(String requestId) {
+        return cycle(store.entriesForRequest(requestId));
+    }
+
+    /** The request's movements in an account, in the given cycle. */
+    private static List<BudgetEntry> current(BudgetAccount account, String requestId, int c) {
+        List<BudgetEntry> mine = account.journal().stream().filter(e -> e.requestId().equals(requestId)).toList();
+        java.util.Set<String> keys = java.util.Arrays.stream(BudgetEntry.Type.values())
+                .filter(t -> t != BudgetEntry.Type.CANCEL).map(t -> key(requestId, c, t))
+                .collect(java.util.stream.Collectors.toSet());
+        return mine.stream().filter(e -> keys.contains(e.id())).toList();
+    }
+
+    /** The account of the request's latest reservation (a request sourced again may be in a later quarter). */
     private String accountOf(String requestId, String department) {
-        return store.entriesForRequest(requestId).stream().map(BudgetEntry::accountId).findFirst()
+        var entries = store.entriesForRequest(requestId);
+        return entries.stream().filter(e -> e.type() == BudgetEntry.Type.RESERVE)
+                .max(java.util.Comparator.comparing(BudgetEntry::at)).map(BudgetEntry::accountId)
+                .or(() -> entries.stream().map(BudgetEntry::accountId).findFirst())
                 .orElseGet(() -> accountFor(department).id());
     }
 

@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ApprovalPolicyTest {
 
-    private final ApprovalPolicy policy = new ApprovalPolicy(new ApprovalProperties(null, null, null, null, null));
+    private final ApprovalPolicy policy = new ApprovalPolicy(com.compras.procurement.policy.PolicyFiles::builtin);
     private final List<StaffMember> staff = List.of(
             new StaffMember("S02", "Elena Torres", "Eng & Ops Manager", StaffRole.LINE_MANAGER, List.of("Engineering", "Operations")),
             new StaffMember("S11", "Ricardo Gil", "COO", StaffRole.DEPARTMENT_HEAD, List.of("Engineering", "Operations")),
@@ -58,18 +58,25 @@ class ApprovalPolicyTest {
     }
 
     @Test
-    void aSpecialRequestIsApprovedTwiceButNeverByTheSameStepAgain() {
+    void approvingTheNeedIsNotApprovingThePrice() {
         List<String> need = roles("NEED", false, "0", null, false, "Javier Ruiz", List.of());
         assertEquals(List.of("Elena Torres/LINE_MANAGER"), need);
         ApprovalStep approvedNeed = ApprovalStep.pending("LINE_MANAGER", "S02", "Elena Torres", "", "need", "NEED")
                 .decide(true, "ok", Instant.now());
-        // sourced at 2,059: the manager is not asked again; nothing else needed within budget
-        assertEquals(List.of(), roles("SPEND", false, "2059", "OTHER", false, "Javier Ruiz", List.of(approvedNeed)));
+        // sourced at 2,059: the budget holder approved the need without a price; she now approves the price
+        assertEquals(List.of("Elena Torres/LINE_MANAGER"),
+                roles("SPEND", false, "2059", "OTHER", false, "Javier Ruiz", List.of(approvedNeed)));
         // sourced at 6,000: department head and finance join
-        assertEquals(List.of("Ricardo Gil/DEPARTMENT_HEAD", "Isabel Moreno/FINANCE_CONTROLLER"),
+        assertEquals(List.of("Elena Torres/LINE_MANAGER", "Ricardo Gil/DEPARTMENT_HEAD", "Isabel Moreno/FINANCE_CONTROLLER"),
                 roles("SPEND", false, "6000", "OTHER", false, "Javier Ruiz", List.of(approvedNeed)));
+        // the need approval stays in the chain, approved
         assertTrue(policy.steps(new ApprovalPolicy.Input("SPEND", false, new BigDecimal("6000"), "OTHER",
                 "Engineering", "Javier Ruiz", false, List.of(approvedNeed)), staff).get(0).isApproved());
+        // within one decision nobody is asked twice
+        ApprovalStep approvedPrice = ApprovalStep.pending("LINE_MANAGER", "S02", "Elena Torres", "", "price", "SPEND")
+                .decide(true, "ok", Instant.now());
+        assertEquals(List.of(), roles("SPEND", false, "2059", "OTHER", false, "Javier Ruiz",
+                List.of(approvedNeed, approvedPrice)));
     }
 
     private List<String> cloud(String amount, String region, String data) {

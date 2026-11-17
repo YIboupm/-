@@ -198,7 +198,7 @@ details.convo summary { cursor: pointer; color: var(--muted); font-size: 13px; }
 .myreq .out.bad { color: var(--err); }
 .myreq .out.warn { color: var(--warn); }
 .rstatus { font-size: 11px; padding: 2px 7px; border-radius: 9px; background: #eef0f3; color: var(--muted); margin-left: 6px; }
-.rstatus.ORDERED, .rstatus.APPROVED, .rstatus.CLOSED { background: var(--ok-soft); color: var(--ok); }
+.rstatus.ORDERED, .rstatus.APPROVED, .rstatus.RECEIVED, .rstatus.CLOSED { background: var(--ok-soft); color: var(--ok); }
 .rstatus.REJECTED { background: var(--err-soft); color: var(--err); }
 .rstatus.BUYER_REVIEW { background: var(--warn-soft); color: var(--warn); }
 .confirm-list { display: flex; flex-direction: column; gap: 4px; }
@@ -232,3 +232,42 @@ details.convo summary { cursor: pointer; color: var(--muted); font-size: 13px; }
 .outcomes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
 .outcomes button { text-align: left; padding: 8px 10px; }
 .outcomes button small { display: block; color: var(--muted); font-weight: 400; margin-top: 2px; }
+
+/* ---- policy as data: routes as step chips, rule tables ---- */
+.flow-steps { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 6px 0; }
+.step-chip { font-size: 12px; padding: 3px 9px; border-radius: 12px; background: #eef0f3; color: var(--muted); white-space: nowrap; }
+.step-chip.DONE { background: var(--ok-soft); color: var(--ok); }
+.step-chip.ACTIVE { background: var(--warn-soft); color: var(--warn); font-weight: 600; }
+.step-chip.SKIPPED { text-decoration: line-through; opacity: .7; }
+.step-chip.block { background: var(--accent-soft); color: var(--accent); }
+.step-arrow { color: var(--muted); }
+table.rules { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 14px; }
+table.rules th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12px; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+table.rules td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.rules code, .pol-when { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.pol-route { margin: 0 0 10px; }
+.pol-route b { display: inline-block; min-width: 130px; }
+.pol-editor { width: 100%; min-height: 380px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; box-sizing: border-box; }
+.pol-report { margin-top: 12px; }
+.pol-report .bad { color: var(--err); }
+.pol-report .good { color: var(--ok); }
+.pol-versions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.pol-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; align-items: center; }
+
+/* ---- receiving and the asset register ---- */
+.rc-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.rc-tag { font-size: 11px; padding: 2px 8px; border-radius: 9px; background: #eef0f3; color: var(--muted); }
+.rc-tag.yes { background: var(--accent-soft); color: var(--accent); }
+.rc-tag.ai { background: var(--warn-soft); color: var(--warn); }
+.rc-tag.done { background: var(--ok-soft); color: var(--ok); }
+.rc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 10px; }
+.rc-grid label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 3px; }
+.rc-grid input, .rc-grid textarea, .rc-grid select { width: 100%; box-sizing: border-box; }
+.rc-grid textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; min-height: 90px; }
+.rc-warn { margin: 8px 0; padding: 8px 10px; border-radius: 8px; background: var(--warn-soft); color: var(--warn); font-size: 13px; }
+.rc-warn ul { margin: 4px 0 0 18px; padding: 0; }
+.rc-ok { margin: 8px 0; padding: 8px 10px; border-radius: 8px; background: var(--ok-soft); color: var(--ok); font-size: 13px; }
+.rc-drop { border: 1px dashed var(--line); border-radius: 8px; padding: 10px; font-size: 13px; color: var(--muted); }
+.rc-drop img { max-width: 100%; max-height: 160px; display: block; margin-top: 6px; border-radius: 6px; }
+.rc-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
+.rc-filter { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }

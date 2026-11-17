@@ -45,16 +45,26 @@ public class SeedDataLoader implements ApplicationRunner {
      */
     @Override
     public void run(ApplicationArguments args) {
-        loadReferenceData();
+        loadReferenceData(false);
     }
 
-    /** Drops and reloads all reference collections. */
+    /** Drops and reloads all reference collections, the asset register included (demo reset). */
     public void loadReferenceData() {
+        loadReferenceData(true);
+    }
+
+    /**
+     * The asset register is reference data only until goods are received into it: on a normal start it is seeded
+     * once, and assets checked in at receiving survive restarts.
+     */
+    public void loadReferenceData(boolean resetAssets) {
         load("seed/categories.json", CategoryDefinition.class);
         load("seed/catalog_items.json", CatalogItem.class);
         load("seed/role_kits.json", RoleKit.class);
         load("seed/employees.json", Employee.class);
-        load("seed/assets.json", Asset.class);
+        if (resetAssets || mongo.count(new org.springframework.data.mongodb.core.query.Query(), Asset.class) == 0) {
+            load("seed/assets.json", Asset.class);
+        }
         load("seed/departments.json", Department.class);
         load("seed/staff.json", com.compras.procurement.approval.StaffMember.class);
         log.info("Reference data loaded from classpath:seed/");

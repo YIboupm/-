@@ -15,6 +15,21 @@ async function api(method, path, body, staffId) {
   return data;
 }
 
+/**
+ * A price as people type it: "470", "€470", "470,50", "1.200,50", "1,200.50". Returns a number, or null.
+ * The last "," or "." followed by one or two digits is the decimal separator; other separators are thousands.
+ */
+function parseAmount(text) {
+  if (text === null || text === undefined) return null;
+  let s = String(text).replace(/[€\s]|EUR/gi, '');
+  if (!s) return null;
+  const m = s.match(/[.,](\d{1,2})$/);
+  const decimals = m ? m[1] : '';
+  const whole = (m ? s.slice(0, -m[0].length) : s).replace(/[.,]/g, '');
+  if (!/^\d+$/.test(whole) || (decimals && !/^\d+$/.test(decimals))) return null;
+  return Number(whole + (decimals ? '.' + decimals : ''));
+}
+
 function esc(value) {
   if (value === null || value === undefined) return '';
   return String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -60,7 +75,7 @@ function candidatesHtml(list) {
 
 const REQ_STATUS = { SUBMITTED: 'Submitted', PENDING_APPROVAL: 'Waiting for approval', BUYER_REVIEW: 'With a buyer',
   SOURCING: 'Being sourced', STRATEGIC_REVIEW: 'Strategic review', REDIRECTED: 'Use an existing agreement', APPROVED: 'Approved', POOLED: 'Waiting to be ordered',
-  ORDERED: 'Ordered', REJECTED: 'Rejected', CLOSED: 'Closed', CANCELLED: 'Cancelled' };
+  ORDERED: 'Ordered', RECEIVED: 'Delivered', REJECTED: 'Rejected', CLOSED: 'Closed', CANCELLED: 'Cancelled' };
 
 /** An employee's requests with the outcome: rejection reason, what was bought, substitutions, PO numbers. */
 function myRequestsHtml(list) {
@@ -77,7 +92,11 @@ function myRequestsHtml(list) {
     } else if (r.status === 'BUYER_REVIEW') outcome = '<div class="out muted">A buyer is sourcing this.</div>';
     if (r.strategic) outcome = `<div class="out">Strategic review (policy 7): ${esc(r.strategic.reasons.join('; '))}${r.strategic.note ? ' · category manager: ' + esc(r.strategic.note) : (r.status === 'STRATEGIC_REVIEW' ? ' · the category manager decides how it is sourced' : '')}</div>` + outcome;
     if (r.splitNote) outcome = `<div class="out warn">${esc(r.splitNote)}</div>` + outcome;
-    outcome = approvalsHtml(r) + budgetLine(r) + outcome;
+    const d = r.delivery;
+    if (d && d.ordered) {
+      outcome += `<div class="out ${d.received === d.ordered ? 'ok' : ''}">Delivered ${d.received} of ${d.ordered}${d.rejected ? ` · ${d.rejected} sent back to the supplier, replacement expected` : ''}${(d.assetTags || []).length ? ` · asset${d.assetTags.length > 1 ? 's' : ''} ${esc(d.assetTags.join(', '))}` : ''}</div>`;
+    } else if (r.status === 'ORDERED') outcome += '<div class="out muted">Waiting for the delivery.</div>';
+    outcome = flowHtml(r) + approvalsHtml(r) + budgetLine(r) + awardsHtml(r) + outcome;
     if (['PENDING_APPROVAL', 'BUYER_REVIEW', 'SOURCING', 'STRATEGIC_REVIEW', 'APPROVED', 'POOLED'].includes(r.status)) {
       outcome += `<div class="out"><button class="small-btn" data-cancel="${esc(r.id)}" data-number="${esc(r.number)}">Cancel request</button></div>`;
     }
@@ -90,8 +109,18 @@ function myRequestsHtml(list) {
 }
 
 
+/** The request's route as the policy composed it: one chip per step, with where the request stands. */
+function flowHtml(r) {
+  if (!r.flow || !r.flow.length) return '';
+  const mark = { DONE: '✓ ', ACTIVE: '● ', SKIPPED: '– ' };
+  return '<div class="flow-steps">' + r.flow.map(s =>
+    `<span class="step-chip ${esc(s.status)}" title="${esc(s.type)}${s.stage ? ' · ' + esc(s.stage) : ''}${s.owner ? ' · ' + esc(s.owner) : ''}">${mark[s.status] || ''}${esc(s.label || s.type)}</span>`)
+    .join('<span class="step-arrow">›</span>')
+    + `<span class="muted small"> · route ${esc(r.route || '')} · policy ${esc(r.policyVersion || '')}</span></div>`;
+}
+
 const ROLE_LABEL = { LINE_MANAGER: 'Line manager', DEPARTMENT_HEAD: 'Department head', FINANCE_CONTROLLER: 'Finance controller',
-  CFO: 'CFO', IT_ASSET_MANAGER: 'IT asset manager', BUYER: 'Buyer', CATEGORY_MANAGER: 'Category manager' };
+  CFO: 'CFO', IT_ASSET_MANAGER: 'IT asset manager', BUYER: 'Buyer', CATEGORY_MANAGER: 'Category manager', FACILITIES: 'Office & facilities', CLOUD_PLATFORM: 'Cloud platform', IT_SECURITY: 'IT security' };
 
 /** Who has approved, who is next: names and roles only, no budget figures. */
 function approvalsHtml(r) {
@@ -119,7 +148,7 @@ function budgetBadge(verdict) {
 /** Navigation shared by every page. */
 function renderNav(active) {
   const pages = [['index.html', 'New request'], ['my-requests.html', 'My requests'], ['approvals.html', 'Approvals'],
-    ['buyer.html', 'Buyer desk'], ['strategic.html', 'Strategic'], ['budget.html', 'Budget'], ['pool.html', 'Pool &amp; orders'], ['audit.html', 'Audit log']];
+    ['buyer.html', 'Buyer desk'], ['strategic.html', 'Strategic'], ['budget.html', 'Budget'], ['policy.html', 'Policy'], ['pool.html', 'Pool &amp; orders'], ['receiving.html', 'Receiving'], ['assets.html', 'Assets'], ['audit.html', 'Audit log']];
   const nav = document.querySelector('header nav');
   if (nav) nav.innerHTML = pages.map(([href, label]) => `<a href="${href}"${href === active ? ' class="active"' : ''}>${label}</a>`).join('');
 }
@@ -144,6 +173,33 @@ function daysUntil(d) {
   if (!d) return '';
   const days = Math.round((new Date(d) - new Date(new Date().toDateString())) / 86400000);
   return days < 0 ? ' · overdue' : ` · in ${days} day${days === 1 ? '' : 's'}`;
+}
+
+/** The lines of a special request, each with its must-haves and the reference price the assistant found. */
+function itemsHtml(r) {
+  const items = r.items || [];
+  if (items.length < 2 && !(items[0] && items[0].referenceUnitPrice)) return '';
+  return '<div class="section-title">Lines · each is quoted, ordered and received on its own</div><table class="rules"><tr><th>#</th><th>Line</th><th>Qty</th><th>Must-haves</th><th>Reference price</th></tr>'
+    + items.map(i => `<tr><td>${esc(i.id)}</td><td><b>${esc(i.name)}</b>${i.preferredModel ? `<br><span class="muted small">employee's choice: ${esc(i.preferredModel)}</span>` : ''}</td><td>${i.quantity}</td>
+      <td>${(i.requirements || []).map(q => `${esc(q.description)}${q.strength === 'preference' ? ' <span class="muted small">(nice to have)</span>' : ''}`).join('<br>') || '<span class="muted">—</span>'}</td>
+      <td>${i.referenceUnitPrice ? `${money(i.referenceUnitPrice)} / unit<br><a class="small" href="${esc(i.referenceSource)}" target="_blank" rel="noopener">source</a>` : '<span class="muted">none found</span>'}</td></tr>`).join('') + '</table>';
+}
+
+/** What the buyer awarded, line by line, with the price check: for approvers, the employee and goods-in. */
+function awardsHtml(r) {
+  const a = r.awards || [];
+  if (!a.length) return '';
+  return '<div class="section-title">Awarded</div><table class="rules"><tr><th>Line</th><th>Supplier · item</th><th>Qty × unit</th><th>Total</th><th>Price check</th></tr>'
+    + a.map(x => {
+      const dev = x.deviationPercent;
+      const flag = dev !== null && dev !== undefined && x.priceNote;
+      return `<tr><td>${esc(x.itemName)}</td><td>${esc(x.supplierName)} · ${esc(x.description)}${x.reference ? `<br>${/^https?:\/\//.test(x.reference) ? `<a class="small" href="${esc(x.reference)}" target="_blank" rel="noopener">quote evidence</a>` : `<span class="muted small">${esc(x.reference)}</span>`}` : ''}
+        ${x.substitutionReason ? `<br><span class="small" style="color:var(--warn)">Not the employee's choice: ${esc(x.substitutionReason)}</span>` : ''}
+        ${x.quoteException ? `<br><span class="small" style="color:var(--warn)">Fewer quotes than policy: ${esc(x.quoteException)}</span>` : ''}</td>
+        <td>${x.quantity} × ${money(x.unitPrice)}</td><td>${money(x.total)}</td>
+        <td>${dev === null || dev === undefined ? '<span class="muted small">no reference price</span>'
+          : `<span class="${flag ? 'rc-tag ai' : 'muted small'}">${dev > 0 ? '+' : ''}${dev}% vs ${money(x.referenceUnitPrice)}</span>${x.priceNote ? `<br><span class="small">Buyer: ${esc(x.priceNote)}</span>` : ''}`}</td></tr>`;
+    }).join('') + '</table>';
 }
 
 function requirementsOf(r) {
@@ -184,6 +240,7 @@ function briefHtml(r) {
 
       <div class="section-title">What to source</div>
       ${reqList}
+      ${itemsHtml(r)}
 
       ${(r.suggestedModels || []).length ? `<div class="section-title">Suggested models · researched by the agent, discussed with the employee</div>
         ${candidatesHtml(r.suggestedModels)}

@@ -14,4 +14,9 @@ public class LoggingPurchaseOrderGateway implements PurchaseOrderGateway {
         log.info("[ERP stub] Issuing {}: {} x {} to {} for {} ({} {})", order.number(), order.totalQuantity(),
                 order.sku(), order.supplierName(), order.deliverySite(), order.totalAmount(), order.currency());
     }
+
+    @Override
+    public void cancel(ConsolidatedOrder order) {
+        log.info("[ERP stub] Cancelling {} with {}: {}", order.number(), order.supplierName(), order.cancelReason());
+    }
 }

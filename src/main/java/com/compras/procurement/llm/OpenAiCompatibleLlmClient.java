@@ -21,7 +21,7 @@ import java.util.Map;
  * (base URL https://api.deepseek.com, model deepseek-v4-pro).
  */
 @Component
-public class OpenAiCompatibleLlmClient implements LlmClient, ToolCallingLlmClient {
+public class OpenAiCompatibleLlmClient implements LlmClient, ToolCallingLlmClient, VisionLlmClient {
 
     private final LlmProperties properties;
     private final RestClient restClient;
@@ -79,6 +79,59 @@ public class OpenAiCompatibleLlmClient implements LlmClient, ToolCallingLlmClien
             return new LlmResponse(content, usage);
         } catch (RestClientException e) {
             throw new LlmUnavailableException("Model call failed: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * The image goes to the vision model as an OpenAI-style content array on the last user message. Thinking is
+     * not requested: reading a delivery note is extraction, and the vision model is the fast one.
+     */
+    @Override
+    public LlmResponse completeJsonWithImage(List<ChatMessage> messages, String imageDataUrl) {
+        if (!properties.hasApiKey()) {
+            throw new LlmUnavailableException(
+                    "The model API key is not configured. Put llm.api-key=... in secrets.properties and restart.");
+        }
+        if (properties.visionModel() == null || properties.visionModel().isBlank()) {
+            throw new LlmUnavailableException("No vision model is configured (llm.vision-model).");
+        }
+        java.util.List<Object> wire = new java.util.ArrayList<>();
+        for (int i = 0; i < messages.size(); i++) {
+            ChatMessage m = messages.get(i);
+            if (i == messages.size() - 1 && "user".equals(m.role())) {
+                wire.add(Map.of("role", "user", "content", List.of(
+                        Map.of("type", "text", "text", m.content()),
+                        Map.of("type", "image_url", "image_url", Map.of("url", imageDataUrl)))));
+            } else {
+                wire.add(Map.of("role", m.role(), "content", m.content()));
+            }
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("model", properties.visionModel());
+        body.put("messages", wire);
+        body.put("response_format", Map.of("type", "json_object"));
+        body.put("temperature", 0.0);
+        body.put("stream", false);
+        try {
+            JsonNode response = restClient.post()
+                    .uri("/chat/completions")
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + properties.apiKey())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .body(JsonNode.class);
+            String content = response == null ? null
+                    : response.path("choices").path(0).path("message").path("content").asText(null);
+            if (content == null || content.isBlank()) {
+                throw new LlmUnavailableException("The model returned an empty reply.");
+            }
+            Map<String, Object> usage = response.has("usage")
+                    ? objectMapper.convertValue(response.get("usage"), new TypeReference<Map<String, Object>>() {
+            }) : Map.of();
+            return new LlmResponse(content, usage);
+        } catch (RestClientException e) {
+            throw new LlmUnavailableException("Image reading failed (" + properties.visionModel() + "): "
+                    + e.getMessage(), e);
         }
     }
 

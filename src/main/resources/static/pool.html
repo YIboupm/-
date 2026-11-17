@@ -152,7 +152,7 @@
           (${esc(a.department)}) · waited ${a.daysWaited} day(s)</td><td class="num">${a.quantity}</td>
           <td class="num">${money(a.individualUnitPrice)}</td><td colspan="3" class="muted">price if bought alone</td></tr>`).join('');
       return `<tr>
-        <td><b>${esc(o.number)}</b><div class="muted small">${esc(o.releaseDate)}</div></td>
+        <td><b style="${o.cancelledAt ? 'text-decoration:line-through' : ''}">${esc(o.number)}</b><div class="muted small">${esc(o.releaseDate)}</div>${o.cancelledAt ? `<div class="rc-tag ai">Cancelled: ${esc(o.cancelReason || '')}</div>` : ''}</td>
         <td>${esc(o.itemName)}<div class="muted small">${esc(o.supplierName)}</div></td>
         <td>${esc(o.deliverySite)}</td>
         <td class="num">${o.totalQuantity}</td>

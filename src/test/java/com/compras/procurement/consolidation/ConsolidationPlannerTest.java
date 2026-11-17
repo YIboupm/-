@@ -30,7 +30,7 @@ class ConsolidationPlannerTest {
     private final CatalogItem laptop = new CatalogItem("LAP-STD", "LAPTOP", "Standard Office Laptop", "", List.of(),
             Map.of(), Map.of(), "SUP-TECH", "TechDistribucion", "EUR", new BigDecimal("899.00"),
             List.of(new PriceBreak(5, new BigDecimal("849.00")), new PriceBreak(10, new BigDecimal("809.00"))),
-            5, List.of());
+            5, List.of(), "LAPTOP");
 
     private DemandLine line(String request, int qty, LocalDate neededBy) {
         return new DemandLine(request, "PR-" + request, "Someone", "Dept", "LAP-STD", "Standard Office Laptop",

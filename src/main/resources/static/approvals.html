@@ -53,6 +53,7 @@
       ${r.splitNote ? `<div class="budget-badge over">${esc(r.splitNote)}</div>` : ''}
       ${r.strategic && r.strategic.outcome ? `<div class="muted small">Strategic review: ${esc(r.strategic.outcome)} by ${esc(r.strategic.decidedBy)}${r.strategic.note ? ' · ' + esc(r.strategic.note) : ''}</div>` : ''}
       ${approvalsHtml(r)}
+      ${s.stage === 'NEED' ? itemsHtml(r) : awardsHtml(r)}
       ${s.stage === 'NEED' ? '' : budgetPanel(item.budget, amount, r.currency)}
       <div class="form-row" style="grid-template-columns: 1fr; margin-top:10px">
         <input type="text" placeholder="Note (required to reject or to send to strategic review)" data-f="note">

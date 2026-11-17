@@ -32,8 +32,23 @@ public record ConsolidatedOrder(
         List<ReleaseReason> reasons,
         List<Allocation> allocations,
         LocalDate releaseDate,
-        Instant createdAt
+        Instant createdAt,
+        /** For a special request with several lines: the line this order is for (null otherwise). */
+        String sourceItemId,
+        /** Set when the order was cancelled before delivery (wrong item or price). */
+        Instant cancelledAt,
+        String cancelReason
 ) {
+    public boolean cancelled() {
+        return cancelledAt != null;
+    }
+
+    public ConsolidatedOrder cancel(Instant at, String reason) {
+        return new ConsolidatedOrder(id, number, sku, itemName, supplierId, supplierName, deliverySite, totalQuantity,
+                unitPrice, listUnitPrice, totalAmount, individualTotal, savings, currency, reasons, allocations,
+                releaseDate, createdAt, sourceItemId, at, reason);
+    }
+
     /**
      * @param individualUnitPrice price this request would have paid if ordered on its own
      * @param daysWaited days between entering the pool and being ordered

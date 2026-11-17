@@ -97,10 +97,20 @@ public class PurchaseRequest {
     private List<com.compras.procurement.matching.Requirement> requirements = new ArrayList<>();
     private List<AlternativeConsidered> alternativesConsidered = new ArrayList<>();
     private List<SuggestedModel> suggestedModels = new ArrayList<>();
+    /** Lines of a special request (empty on catalog requests and on special requests from before lines). */
+    private List<SpecialItem> items = new ArrayList<>();
+    /** What the buyer awarded, one per line. */
+    private List<Award> awards = new ArrayList<>();
     private List<ApprovalStep> approvals = new ArrayList<>();
     /** Policy route (STANDARD / BUYER_SOURCED / STRATEGIC) and why. */
     private String route;
     private List<String> routeReasons = new ArrayList<>();
+    /** The policy version this request is judged under, from submission to the end. */
+    private String policyVersion;
+    /** Delivery progress once ordered: units ordered, checked in, sent back; the assets registered for it. */
+    private Delivery delivery;
+    /** The route as an ordered list of steps (building blocks), with where the request stands. */
+    private List<FlowStep> flow = new ArrayList<>();
     /** Set when the split check (policy 2) added up related requests. */
     private String splitNote;
     private java.math.BigDecimal policyValue;
@@ -163,6 +173,18 @@ public class PurchaseRequest {
     public List<String> getRouteReasons() { return routeReasons == null ? List.of() : routeReasons; }
     public String getSplitNote() { return splitNote; }
     public java.math.BigDecimal getPolicyValue() { return policyValue; }
+    public String getPolicyVersion() { return policyVersion; }
+    public Delivery getDelivery() { return delivery; }
+    public void setDelivery(Delivery delivery) { this.delivery = delivery; }
+
+    public record Delivery(int ordered, int received, int rejected, List<String> assetTags) {
+    }
+    public List<FlowStep> getFlow() { return flow == null ? List.of() : flow; }
+
+    public void setFlow(String policyVersion, List<FlowStep> flow) {
+        this.policyVersion = policyVersion;
+        this.flow = new ArrayList<>(flow);
+    }
     public StrategicCase getStrategic() { return strategic; }
     public List<Quote> getQuotes() { return quotes == null ? List.of() : quotes; }
     public String getSourcingOwner() { return sourcingOwner; }
@@ -217,6 +239,56 @@ public class PurchaseRequest {
     /** For the buyer form and the employee's view (JSON only). */
     public String getChosenModel() { return chosenModelLabel(); }
     public List<SuggestedModel> getSuggestedModels() { return suggestedModels == null ? List.of() : suggestedModels; }
+    public List<SpecialItem> getItems() { return items == null ? List.of() : items; }
+    public List<Award> getAwards() { return awards == null ? List.of() : awards; }
+
+    public void setItems(List<SpecialItem> items) {
+        this.items = items == null ? new ArrayList<>() : new ArrayList<>(items);
+    }
+
+    /** The lines a buyer sources: the request's own, or the request itself as one line. */
+    public List<SpecialItem> itemsOrDefault() {
+        if (!getItems().isEmpty()) {
+            return getItems();
+        }
+        Object q = attributes == null ? null : attributes.get("quantity");
+        int quantity;
+        try {
+            quantity = q == null ? 1 : (int) Double.parseDouble(String.valueOf(q));
+        } catch (NumberFormatException e) {
+            quantity = 1;
+        }
+        String name = title != null ? title : chosenModelLabel() != null ? chosenModelLabel() : categoryName;
+        return List.of(new SpecialItem("1", name, Math.max(1, quantity), getRequirements(), null, null,
+                chosenModelLabel()));
+    }
+
+    /** For the buyer's desk (JSON): the lines to source, the request's own or the request as one line. */
+    public List<SpecialItem> getSourcingItems() {
+        return isNonStandard() || sourced != null ? itemsOrDefault() : List.of();
+    }
+
+    public void recordAwards(List<Award> awards, SourcedItem summary) {
+        this.awards = new ArrayList<>(awards);
+        this.sourced = summary;
+    }
+
+    /** The order was cancelled before delivery: the awards and the approvals of their price no longer stand. */
+    public void reopenSourcing(Instant at, String note) {
+        moveTo(RequestStatus.SOURCING, at, note);
+        this.sourced = null;
+        this.awards = new ArrayList<>();
+        this.delivery = null;
+        List<ApprovalStep> kept = new ArrayList<>();
+        for (ApprovalStep s : getApprovals()) {
+            kept.add(s.isApproved() && !"NEED".equals(s.stage()) ? s.supersede(at, "Price no longer valid: " + note) : s);
+        }
+        this.approvals = kept;
+    }
+
+    public void replaceQuote(int index, Quote quote) {
+        quotes.set(index, quote);
+    }
 
     /** Moves the request along its state machine; rejects transitions the lifecycle does not allow. */
     public void moveTo(RequestStatus target, Instant at, String note) {

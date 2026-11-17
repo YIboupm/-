@@ -13,7 +13,9 @@ public record LlmProperties(
         /** "enabled" or "disabled": DeepSeek's thinking mode. Enabled is slower but reasons more. */
         String thinking,
         /** low | high | max, only sent when thinking is enabled. */
-        String reasoningEffort
+        String reasoningEffort,
+        /** A model that reads images (delivery notes). DeepSeek: deepseek-flash; deepseek-v4-pro is text-only. */
+        String visionModel
 ) {
     public boolean thinkingEnabled() {
         return "enabled".equalsIgnoreCase(thinking);

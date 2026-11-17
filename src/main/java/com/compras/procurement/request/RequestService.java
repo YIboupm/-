@@ -73,6 +73,7 @@ public class RequestService {
                 input.specialRequirements(),
                 now);
         request.describe(input.title(), input.requirements(), input.alternativesConsidered(), input.suggestedModels());
+        request.setItems(input.items());
         request = repository.save(request);
         events.publishEvent(new Events.RequestSubmitted(request.getId(), request.getNumber(), request.isNonStandard(), now));
         return request;
@@ -131,6 +132,13 @@ public class RequestService {
         }
     }
 
+    /** The request's route as steps, under one policy version; also saves progress along it. */
+    public PurchaseRequest recordFlow(String requestId, String policyVersion, List<FlowStep> flow) {
+        PurchaseRequest request = get(requestId);
+        request.setFlow(policyVersion, flow);
+        return repository.save(request);
+    }
+
     public PurchaseRequest recordRoute(String requestId, String route, List<String> reasons,
                                        BigDecimal policyValue, String splitNote) {
         PurchaseRequest request = get(requestId);
@@ -180,6 +188,7 @@ public class RequestService {
         return repository.save(request);
     }
 
+    /** A supplier's quote for one line of the request, with where it comes from (a link, a quote number). */
     public PurchaseRequest addQuote(String requestId, Quote quote) {
         PurchaseRequest request = get(requestId);
         if (request.getStatus() != RequestStatus.SOURCING) {
@@ -189,40 +198,208 @@ public class RequestService {
                 || quote.unitPrice().signum() <= 0 || quote.quantity() < 1) {
             throw new IllegalStateException("A quote needs a supplier, a quantity and a positive unit price.");
         }
-        request.addQuote(new Quote(quote.supplierName().trim(), quote.description(), quote.quantity(),
-                quote.unitPrice(), Money.times(quote.unitPrice(), quote.quantity()), quote.reference(),
-                quote.note(), quote.addedBy(), Instant.now(clock)));
+        if (quote.description() == null || quote.description().isBlank()) {
+            throw new IllegalStateException("Say what exactly the quote covers (model, configuration), as the supplier states it.");
+        }
+        if (quote.reference() == null || quote.reference().isBlank()) {
+            throw new IllegalStateException("Give the quote's evidence: a link, a quote number or a document name.");
+        }
+        List<SpecialItem> items = request.itemsOrDefault();
+        String itemId = quote.itemId();
+        if (itemId == null && items.size() == 1) {
+            itemId = items.get(0).id();
+        }
+        String line = itemId;
+        if (line == null || items.stream().noneMatch(i -> i.id().equals(line))) {
+            throw new IllegalStateException("Say which line of the request the quote covers: "
+                    + String.join(", ", items.stream().map(i -> i.id() + " " + i.name()).toList()) + ".");
+        }
+        request.addQuote(new Quote(quote.supplierName().trim(), quote.description().trim(), quote.quantity(),
+                quote.unitPrice(), Money.times(quote.unitPrice(), quote.quantity()), quote.reference().trim(),
+                quote.note(), quote.addedBy(), Instant.now(clock), line, null));
         return repository.save(request);
     }
 
+    /** A wrong quote is withdrawn, not deleted: it stays on the request for audit. */
+    public PurchaseRequest withdrawQuote(String requestId, int index, String reason, String by) {
+        PurchaseRequest request = get(requestId);
+        if (request.getStatus() != RequestStatus.SOURCING) {
+            throw new IllegalStateException(request.getNumber() + " is not being sourced.");
+        }
+        if (index < 0 || index >= request.getQuotes().size() || request.getQuotes().get(index).withdrawn() != null) {
+            throw new IllegalStateException("No such quote to withdraw.");
+        }
+        if (reason == null || reason.isBlank()) {
+            throw new IllegalStateException("Say why the quote is withdrawn.");
+        }
+        Quote q = request.getQuotes().get(index);
+        request.replaceQuote(index, q.withdraw(reason.trim() + " (" + by + ")"));
+        request.addNote(Instant.now(clock), "Quote from " + q.supplierName() + " withdrawn by " + by + ": " + reason.trim());
+        return repository.save(request);
+    }
+
+    /** The buyer's decision for one line. */
     /**
-     * Award one of the recorded quotes (policy 5: enough quotes for the value, or a written reason).
-     *
-     * @param quotesRequired from the policy for this award value
+     * @param sameAsPreferred the buyer states the quote is for the product the employee chose for this line
+     */
+    public record LineAward(String itemId, int quoteIndex, Boolean sameAsPreferred, String substitutionReason,
+                            List<BuyerApproval.Confirmation> confirmations, String quoteException, String priceNote) {
+    }
+
+    /**
+     * One-line award (requests from before lines). Kept for callers that award a single quote.
      */
     public PurchaseRequest award(String requestId, int quoteIndex, String description, String substitutionReason,
                                  List<BuyerApproval.Confirmation> confirmations, String quoteException, String note,
                                  java.util.function.ToIntFunction<BigDecimal> quotesRequiredFor) {
         PurchaseRequest request = get(requestId);
+        List<SpecialItem> items = request.itemsOrDefault();
+        String itemId = items.size() == 1 ? items.get(0).id() : null;
+        if (quoteIndex >= 0 && quoteIndex < request.getQuotes().size() && request.getQuotes().get(quoteIndex).itemId() != null) {
+            itemId = request.getQuotes().get(quoteIndex).itemId();
+        }
+        boolean same = description != null && items.get(0).preferredModel() != null
+                && description.trim().equalsIgnoreCase(items.get(0).preferredModel().trim());
+        return awardLines(requestId, List.of(new LineAward(itemId, quoteIndex, same, substitutionReason, confirmations,
+                quoteException, null)), note, quotesRequiredFor, 40, "buyer");
+    }
+
+    /**
+     * Award every line of the request (policy 5). For each line: a live quote for that line; enough quotes from
+     * different suppliers for the value of the whole award, or a written reason; every must-have confirmed; a reason
+     * when it is not the employee's choice; and an explanation when the price is far from the line's reference price.
+     *
+     * @param deviationLimit percent from the reference price above which the buyer must explain (policy parameter)
+     */
+    public PurchaseRequest awardLines(String requestId, List<LineAward> lines, String note,
+                                      java.util.function.ToIntFunction<BigDecimal> quotesRequiredFor,
+                                      int deviationLimit, String by) {
+        PurchaseRequest request = get(requestId);
         if (request.getStatus() != RequestStatus.SOURCING) {
             throw new IllegalStateException(request.getNumber() + " is not being sourced.");
         }
+        List<SpecialItem> items = request.itemsOrDefault();
+        boolean single = items.size() == 1;
+        java.util.Map<String, LineAward> byItem = new java.util.LinkedHashMap<>();
+        for (LineAward l : lines == null ? List.<LineAward>of() : lines) {
+            if (l.itemId() != null) {
+                byItem.put(l.itemId(), l);
+            }
+        }
+        List<String> problems = new java.util.ArrayList<>();
         List<Quote> quotes = request.getQuotes();
-        if (quoteIndex < 0 || quoteIndex >= quotes.size()) {
-            throw new IllegalStateException("Choose one of the recorded quotes.");
+        BigDecimal total = BigDecimal.ZERO;
+        for (SpecialItem item : items) {
+            LineAward l = byItem.get(item.id());
+            if (l == null || l.quoteIndex() < 0 || l.quoteIndex() >= quotes.size()
+                    || !quotes.get(l.quoteIndex()).covers(item.id(), single)) {
+                problems.add("Line " + item.id() + " (" + item.name() + "): choose one of its quotes.");
+                continue;
+            }
+            total = total.add(quotes.get(l.quoteIndex()).total());
         }
-        Quote q = quotes.get(quoteIndex);
-        int required = quotesRequiredFor.applyAsInt(q.total());
-        if (quotes.size() < required && (quoteException == null || quoteException.isBlank())) {
-            throw new IllegalStateException("Policy 5: an award of " + q.total() + " EUR needs " + required
-                    + " quotes; " + quotes.size() + " recorded. Add quotes, or say why fewer were possible.");
+        if (!problems.isEmpty()) {
+            throw new IllegalStateException(String.join(" ", problems));
         }
-        String noteText = quotes.size() < required ? ((note == null ? "" : note + " ") + "[Fewer quotes than policy: "
-                + quoteException.trim() + "]").trim() : note;
-        return buyerApprove(requestId, new BuyerApproval(description == null || description.isBlank()
-                ? (q.description() == null || q.description().isBlank() ? request.getChosenModel() : q.description())
-                : description, q.supplierName(), q.quantity(), q.unitPrice(), noteText, substitutionReason,
-                confirmations));
+        int required = quotesRequiredFor.applyAsInt(total);
+        Instant now = Instant.now(clock);
+        List<Award> awards = new java.util.ArrayList<>();
+        for (SpecialItem item : items) {
+            LineAward l = byItem.get(item.id());
+            Quote q = quotes.get(l.quoteIndex());
+            String at = "Line " + item.id() + " (" + item.name() + "): ";
+            long independent = quotes.stream().filter(x -> x.covers(item.id(), single))
+                    .map(x -> x.supplierName().trim().replaceAll("\\s+", " ").toLowerCase(java.util.Locale.ROOT))
+                    .distinct().count();
+            String exception = blank(l.quoteException()) ? null : l.quoteException().trim();
+            if (independent < required && exception == null) {
+                problems.add("Policy 5: an award of " + total + " EUR needs " + required + " independent supplier "
+                        + "quotes for every line; " + at + independent + " recorded. Add quotes, or say why fewer were possible.");
+            }
+            // every must-have of the line, confirmed by the buyer one by one
+            java.util.Map<String, Boolean> answers = new java.util.HashMap<>();
+            if (l.confirmations() != null) {
+                l.confirmations().forEach(c -> answers.put(c.requirement(), c.met()));
+            }
+            List<BuyerApproval.Confirmation> confirmations = new java.util.ArrayList<>();
+            for (var r : item.requirements()) {
+                Boolean met = answers.get(r.description());
+                if (r.isMust() && met == null) {
+                    problems.add(at + "confirm whether the quoted item meets \"" + r.description() + "\".");
+                } else if (r.isMust() && !met) {
+                    problems.add(at + "the quoted item does not meet the must-have \"" + r.description()
+                            + "\": source another item, or reject the request with the reason.");
+                }
+                if (met != null) {
+                    confirmations.add(new BuyerApproval.Confirmation(r.description(), met));
+                }
+            }
+            boolean substituted = item.preferredModel() != null && !Boolean.TRUE.equals(l.sameAsPreferred())
+                    && !q.description().equalsIgnoreCase(item.preferredModel().trim());
+            String reason = blank(l.substitutionReason()) ? null : l.substitutionReason().trim();
+            if (substituted && reason == null) {
+                problems.add(at + "this is not the employee's choice (" + item.preferredModel()
+                        + "). Say why, e.g. \"model discontinued\".");
+            }
+            // a price far from what the item costs usually means the quote covers something else
+            Integer deviation = null;
+            String priceNote = blank(l.priceNote()) ? null : l.priceNote().trim();
+            if (item.referenceUnitPrice() != null && item.referenceUnitPrice().signum() > 0) {
+                deviation = q.unitPrice().subtract(item.referenceUnitPrice()).multiply(BigDecimal.valueOf(100))
+                        .divide(item.referenceUnitPrice(), 0, java.math.RoundingMode.HALF_UP).intValue();
+                if (Math.abs(deviation) > deviationLimit && priceNote == null) {
+                    problems.add(at + "the unit price " + q.unitPrice() + " EUR is " + Math.abs(deviation) + "% "
+                            + (deviation < 0 ? "below" : "above") + " the reference price " + item.referenceUnitPrice()
+                            + " EUR (" + item.referenceSource() + "). Check that the quote covers the whole item and "
+                            + "the full quantity, or explain the price.");
+                }
+            }
+            awards.add(new Award(item.id(), item.name(), l.quoteIndex(), q.description(), q.supplierName(),
+                    q.quantity(), q.unitPrice(), q.total(), q.reference(), substituted, substituted ? reason : null,
+                    confirmations, independent < required ? exception : null, item.referenceUnitPrice(), deviation,
+                    priceNote));
+        }
+        if (!problems.isEmpty()) {
+            throw new IllegalStateException(String.join(" ", problems));
+        }
+        // the summary the rest of the system reads (amount, supplier for the split check, what the employee sees)
+        String description = awards.size() == 1 ? awards.get(0).description()
+                : String.join(" + ", awards.stream().map(a -> a.itemName() + " × " + a.quantity()).toList());
+        String suppliers = String.join(", ", awards.stream().map(Award::supplierName).distinct().toList());
+        List<String> exceptions = awards.stream().filter(a -> a.quoteException() != null)
+                .map(a -> a.itemName() + ": " + a.quoteException()).toList();
+        String buyerNote = ((note == null ? "" : note.trim() + " ")
+                + (exceptions.isEmpty() ? "" : "[Fewer quotes than policy: " + String.join("; ", exceptions) + "]")).trim();
+        boolean anySubstituted = awards.stream().anyMatch(a -> Boolean.TRUE.equals(a.substituted()));
+        int quantity = awards.size() == 1 ? awards.get(0).quantity() : items.stream().mapToInt(SpecialItem::quantity).max().orElse(1);
+        request.recordAwards(awards, new PurchaseRequest.SourcedItem(description, suppliers, quantity,
+                total.divide(BigDecimal.valueOf(quantity), 2, java.math.RoundingMode.HALF_UP), Money.scale(total),
+                buyerNote.isEmpty() ? null : buyerNote, now, request.chosenModelLabel(), anySubstituted,
+                anySubstituted ? String.join("; ", awards.stream().filter(a -> a.substitutionReason() != null)
+                        .map(Award::substitutionReason).toList()) : null,
+                awards.stream().flatMap(a -> a.confirmations().stream()).toList()));
+        request.addNote(now, "Awarded by " + by + ": " + String.join("; ", awards.stream().map(a -> a.itemName()
+                + " → " + a.supplierName() + " " + a.quantity() + " × " + a.unitPrice() + " EUR"
+                + (a.deviationPercent() != null && a.priceNote() != null ? " (" + a.deviationPercent()
+                + "% from the reference: " + a.priceNote() + ")" : "")).toList()));
+        request = repository.save(request);
+        // the price is known now: the spend goes through the approval matrix before anything is ordered
+        events.publishEvent(new Events.RequestSourced(request.getId(), now));
+        return get(request.getId());
+    }
+
+    /**
+     * A special order turned out wrong before delivery (wrong item, wrong price): the request goes back to
+     * sourcing. The caller has already cancelled the purchase order and the budget commitment.
+     */
+    public PurchaseRequest reopenSourcing(String requestId, String by, String reason) {
+        PurchaseRequest request = get(requestId);
+        request.reopenSourcing(Instant.now(clock), "Order cancelled by " + by + " and sourced again: " + reason);
+        return repository.save(request);
+    }
+
+    private static boolean blank(String s) {
+        return s == null || s.isBlank();
     }
 
     /** Special requests are not auto-approved: a buyer sources and prices them first. */
@@ -328,6 +505,20 @@ public class RequestService {
                 "On purchase order(s) " + String.join(", ", orderNumbers));
         events.publishEvent(new Events.RequestOrdered(requestId, request.getNumber(), request.chargeDepartment(),
                 orderNumbers, amount, Instant.now(clock)));
+        return request;
+    }
+
+    /** Delivery progress (receiving): shown to the employee; no status change. */
+    public PurchaseRequest recordDelivery(String requestId, PurchaseRequest.Delivery delivery) {
+        PurchaseRequest request = get(requestId);
+        request.setDelivery(delivery);
+        return repository.save(request);
+    }
+
+    /** Everything ordered for it has been checked in. */
+    public PurchaseRequest markReceived(String requestId, List<String> assetTags, String note) {
+        PurchaseRequest request = transition(requestId, RequestStatus.RECEIVED, note);
+        events.publishEvent(new Events.RequestReceived(requestId, request.getNumber(), assetTags, Instant.now(clock)));
         return request;
     }
 

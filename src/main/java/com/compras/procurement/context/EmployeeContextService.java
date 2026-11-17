@@ -50,7 +50,9 @@ public class EmployeeContextService {
     public EmployeeContext contextFor(String employeeId) {
         Employee employee = employee(employeeId);
         List<Asset> visible = new ArrayList<>(assets.findByAssignedTo(employeeId));
-        visible.addAll(assets.findBySiteAndAssignedToIsNull(employee.site()));
+        // received-but-not-handed-out assets are earmarked for their request: never offered for reuse
+        assets.findBySiteAndAssignedToIsNull(employee.site()).stream()
+                .filter(a -> !Asset.RESERVED.equals(a.status())).forEach(visible::add);
         return new EmployeeContext(employee, visible);
     }
 }

@@ -96,10 +96,14 @@ public class AgentIntakeService {
         Conversation c = loadOpen(conversationId);
         c.say("user", text, now());
         if (c.getPendingToolCallId() != null) {
-            boolean wasProposal = c.getProposal() != null;
+            boolean wasProposal = c.proposalCallPending();
             String callId = c.resolvePending();
             c.addAgentMessage(AgentMessage.tool(callId, json(wasProposal
-                    ? Map.of("confirmed", false, "employee_wrote_instead", text)
+                    ? Map.of("confirmed", false, "submitted", false, "card_still_open", true,
+                            "employee_wrote_instead", text,
+                            "note", "The proposal is NOT submitted. Its card stays on screen and the employee can "
+                                    + "still confirm it. Answer what they wrote. If the proposal must change, call the "
+                                    + "propose tool again (the new card replaces it); otherwise do not propose again.")
                     : Map.of("answered_with_options", false, "employee_wrote_instead", text))));
         } else {
             c.addAgentMessage(AgentMessage.user(text));
@@ -157,7 +161,7 @@ public class AgentIntakeService {
             throw new IllegalStateException("There is no proposal to confirm.");
         }
         EmployeeContext context = employees.contextFor(c.getEmployeeId());
-        String callId = c.getPendingToolCallId();
+        boolean callIsProposal = c.proposalCallPending();
         String message;
         Conversation.Status status;
         String requestId = null;
@@ -197,7 +201,8 @@ public class AgentIntakeService {
                         confirmedSources(p.fields()), p.lines(),
                         p.estimatedTotal() == null ? java.math.BigDecimal.ZERO : p.estimatedTotal(),
                         properties.currency(), List.of(), reasons, p.checks(), c.originalWords(), p.summary(),
-                        p.title(), p.requirements(), p.considered(), p.candidates()));
+                        p.title(), p.requirements(), p.considered(), p.candidates(),
+                        p.items() == null ? List.of() : p.items()));
                 requestId = r.getId();
                 PurchaseRequest current = requests.get(r.getId());
                 message = "Submitted as special request " + current.getNumber() + ". " + nextStep(current)
@@ -208,11 +213,30 @@ public class AgentIntakeService {
             }
             default -> throw new IllegalStateException("Unknown proposal type");
         }
-        c.resolvePending();
-        c.addAgentMessage(AgentMessage.tool(callId, json(Map.of("confirmed", true, "result", message))));
+        String number = requestId == null ? null : requests.get(requestId).getNumber();
+        c.addSubmitted(new Conversation.Submitted(requestId, number, p.title(), p.type().name(), now()));
+        c.clearProposal();
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("confirmed", true);
+        result.put("result", message);
+        result.put("submitted_in_this_conversation", c.getSubmitted().stream()
+                .map(s -> (s.number() == null ? s.kind() : s.number()) + ": " + s.title()).toList());
+        result.put("next", "Continue with any part of the employee's need that is not submitted yet (check your plan); "
+                + "do not propose again what is listed above. If everything is covered, close with one short "
+                + "sentence.");
+        String callId = c.resolvePending();
+        if (callIsProposal) {
+            c.addAgentMessage(AgentMessage.tool(callId, json(result)));
+        } else {
+            if (callId != null) { // a question asked after the card: it is left unanswered
+                c.addAgentMessage(AgentMessage.tool(callId, json(Map.of("answered", false,
+                        "note", "The employee confirmed the open proposal card instead."))));
+            }
+            c.addAgentMessage(AgentMessage.user("[System] The employee pressed Confirm on the proposal card. "
+                    + json(result)));
+        }
         c.say("assistant", message, now());
-        c.finish(status, requestId);
-        return view(conversations.save(c));
+        return runLoop(c);
     }
 
     /** The employee did not accept the proposal; their feedback goes back to the agent. */
@@ -223,8 +247,20 @@ public class AgentIntakeService {
         }
         String text = feedback == null || feedback.isBlank() ? "Not like this." : feedback.trim();
         c.say("user", "Not confirmed: " + text, now());
+        boolean callIsProposal = c.proposalCallPending();
         String callId = c.resolvePending();
-        c.addAgentMessage(AgentMessage.tool(callId, json(Map.of("confirmed", false, "employee_feedback", text))));
+        c.clearProposal();
+        Map<String, Object> result = Map.of("confirmed", false, "submitted", false, "card_removed", true,
+                "employee_feedback", text);
+        if (callIsProposal) {
+            c.addAgentMessage(AgentMessage.tool(callId, json(result)));
+        } else {
+            if (callId != null) {
+                c.addAgentMessage(AgentMessage.tool(callId, json(Map.of("answered", false,
+                        "note", "The employee rejected the open proposal card instead."))));
+            }
+            c.addAgentMessage(AgentMessage.user("[System] The employee rejected the proposal card. " + json(result)));
+        }
         return runLoop(c);
     }
 
@@ -254,7 +290,7 @@ public class AgentIntakeService {
         for (int step = 1; step <= maxSteps; step++) {
             List<AgentMessage> messages = new ArrayList<>();
             messages.add(AgentMessage.system(AgentPrompt.system(requester, costCenter, LocalDate.now(clock),
-                    properties.buyerResponseDays())));
+                    properties.buyerResponseDays()) + state(c)));
             messages.addAll(c.getAgentMessages());
 
             ChatResult r = model.chat("agent step " + step, c.getId(), messages, tools.specs());
@@ -264,8 +300,10 @@ public class AgentIntakeService {
                 c.say("assistant", r.content().trim(), now());
             }
             if (!r.hasToolCalls()) {
-                c.setStatus(Conversation.Status.ACTIVE);
-                return view(conversations.save(c)); // the model answered in text: the turn is over
+                // the model answered in text: the turn is over (an unconfirmed card stays confirmable)
+                c.setStatus(c.getProposal() != null ? Conversation.Status.AWAITING_CONFIRMATION
+                        : Conversation.Status.ACTIVE);
+                return view(conversations.save(c));
             }
 
             boolean paused = false;
@@ -282,14 +320,15 @@ public class AgentIntakeService {
                     if (ex.result().questions() != null) {
                         c.waitForAnswers(call.id(), ex.result().questions());
                     } else {
-                        c.waitForConfirmation(call.id(), ex.result().proposal());
+                        c.waitForConfirmation(call.id(), ex.result().proposal()); // replaces an older card
                     }
                 } else if (!ex.ok() && failures.merge(call.name() + call.arguments(), 1, Integer::sum) >= 3) {
                     // The model keeps sending the same rejected call: stop instead of burning steps.
                     c.addAgentMessage(AgentMessage.tool(call.id(), ex.output()));
                     c.say("assistant", "I'm stuck preparing the next step. Please answer in your own words (for "
                             + "example how many, by when, for whom), and I'll continue from there.", now());
-                    c.setStatus(Conversation.Status.ACTIVE);
+                    c.setStatus(c.getProposal() != null ? Conversation.Status.AWAITING_CONFIRMATION
+                            : Conversation.Status.ACTIVE);
                     return view(conversations.save(c));
                 } else if (!ex.ok() && failures.get(call.name() + call.arguments()) == 2) {
                     c.addAgentMessage(AgentMessage.tool(call.id(), json(Map.of(
@@ -307,7 +346,7 @@ public class AgentIntakeService {
         }
         c.say("assistant", "I could not finish this in " + maxSteps + " steps. Please rephrase or add detail, "
                 + "or I can prepare a request for a buyer.", now());
-        c.setStatus(Conversation.Status.ACTIVE);
+        c.setStatus(c.getProposal() != null ? Conversation.Status.AWAITING_CONFIRMATION : Conversation.Status.ACTIVE);
         return view(conversations.save(c));
     }
 
@@ -343,11 +382,38 @@ public class AgentIntakeService {
 
     // ------------------------------------------------------------------ helpers
 
+    /** What the system knows about this conversation, recomputed every step: the model's only source for it. */
+    static String state(Conversation c) {
+        StringBuilder sb = new StringBuilder("\n\nCONVERSATION STATE (from the system; authoritative)\n");
+        if (c.getSubmitted().isEmpty()) {
+            sb.append("- Submitted in this conversation: nothing yet.\n");
+        } else {
+            sb.append("- Submitted in this conversation (confirmed by the employee):\n");
+            c.getSubmitted().forEach(s -> sb.append("  - ").append(s.number() == null ? s.kind() : s.number())
+                    .append(": ").append(s.title()).append("\n"));
+        }
+        if (c.getProposal() != null) {
+            sb.append("- Open proposal card, NOT submitted (waiting for Confirm): ").append(c.getProposal().title())
+                    .append("\n");
+        }
+        sb.append("- Only what is listed as submitted exists. Never tell the employee something was submitted, "
+                + "approved or ordered unless it is listed here. One proposal card is on screen at a time: when "
+                + "the need has several parts, propose them one after another; after each confirmation, continue "
+                + "with the next part.");
+        return sb.toString();
+    }
+
     private ConversationView view(Conversation c) {
         PurchaseRequest request = c.getRequestId() == null ? null : requests.get(c.getRequestId());
+        List<ConversationView.SubmittedView> submitted = c.getSubmitted().stream().map(s -> {
+            PurchaseRequest pr = s.requestId() == null ? null : requests.get(s.requestId());
+            return new ConversationView.SubmittedView(s.requestId(), s.number(), s.title(), s.kind(),
+                    pr == null ? null : pr.getStatus().name(), pr == null ? null : nextStep(pr));
+        }).toList();
         return new ConversationView(c.getId(), c.getEmployeeId(), c.getStatus().name(), c.getTurns(), c.getPlan(),
                 c.getPlanExplanation(), c.getPendingQuestions(), c.getProposal(), c.getRequestId(),
-                request == null ? null : request.getNumber(), request == null ? null : request.getStatus().name());
+                request == null ? null : request.getNumber(), request == null ? null : request.getStatus().name(),
+                submitted);
     }
 
     private static Map<String, String> confirmedSources(Map<String, Object> fields) {

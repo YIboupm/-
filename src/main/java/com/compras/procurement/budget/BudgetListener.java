@@ -4,7 +4,7 @@ import com.compras.procurement.shared.Events;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
-/** Moves money as requests move: release on rejection or cancellation, commit on order. */
+/** Moves money as requests move: release on rejection or cancellation, commit on order, spend on delivery. */
 @Component
 public class BudgetListener {
 
@@ -29,5 +29,10 @@ public class BudgetListener {
         if (e.amount() != null) {
             budgets.commit(e.requestId(), e.requestNumber(), e.department(), e.amount(), "system");
         }
+    }
+
+    @EventListener
+    public void on(Events.RequestReceived e) {
+        budgets.spend(e.requestId(), e.requestNumber(), "receiving");
     }
 }

@@ -19,7 +19,7 @@ class RequirementMatcherTest {
     private static CatalogItem laptop(String sku, int price, String gpuType, int ramGb) {
         return new CatalogItem(sku, "LAPTOP", sku, "", List.of(), Map.of(),
                 Map.of("os", "Windows 11", "gpuType", gpuType, "ramGb", ramGb),
-                "SUP", "Supplier", "EUR", new BigDecimal(price), List.of(), 5, List.of());
+                "SUP", "Supplier", "EUR", new BigDecimal(price), List.of(), 5, List.of(), "LAPTOP");
     }
 
     private final CatalogItem std = laptop("LAP-STD", 899, "integrated", 16);
@@ -66,10 +66,10 @@ class RequirementMatcherTest {
     void supportsExplicitlyForbiddenValues() {
         CatalogItem cuda = new CatalogItem("CUDA", "LAPTOP", "CUDA", "", List.of(), Map.of(),
                 Map.of("gpuComputeApi", "CUDA"), "SUP", "Supplier", "EUR", new BigDecimal(1),
-                List.of(), 1, List.of());
+                List.of(), 1, List.of(), "LAPTOP");
         CatalogItem directMl = new CatalogItem("DML", "LAPTOP", "DML", "", List.of(), Map.of(),
                 Map.of("gpuComputeApi", "DirectML"), "SUP", "Supplier", "EUR", new BigDecimal(1),
-                List.of(), 1, List.of());
+                List.of(), 1, List.of(), "LAPTOP");
         Requirement noCuda = new Requirement("Cannot use CUDA", "gpuComputeApi", "neq", "CUDA", "must");
 
         assertFalse(RequirementMatcher.satisfies("CUDA", noCuda));

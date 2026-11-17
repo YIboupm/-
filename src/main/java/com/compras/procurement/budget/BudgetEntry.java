@@ -7,8 +7,8 @@ import org.springframework.data.mongodb.core.mapping.Document;
 import java.time.Instant;
 
 /**
- * One movement of money in the budget ledger. The id is the idempotency key ("requestId:RESERVE"), so a retried
- * or double-clicked step can never move money twice. Amounts in cents; positive = moved into that bucket.
+ * A movement embedded in BudgetAccount.journal. The annotation also reads the legacy separate collection
+ * during upgrade. The id is an idempotency key, checked within the account CAS. Amounts are cents.
  */
 @Document("budget_ledger")
 public record BudgetEntry(
@@ -30,6 +30,16 @@ public record BudgetEntry(
         /** Ordered: the reservation becomes a commitment at the real price; the difference is released. */
         COMMIT,
         /** Rejected or cancelled: whatever was held goes back. */
-        RELEASE
+        RELEASE,
+        /**
+         * Delivered and checked in: the commitment becomes actual spend. (In a real company this happens when the
+         * invoice matches the order and the receipt; the demo has no invoices, so receipt stands in for it.)
+         */
+        SPEND,
+        /**
+         * The order was cancelled before delivery (wrong item or price): the commitment is released and the request
+         * is sourced again. Later movements of the request start a new cycle with their own keys.
+         */
+        CANCEL
     }
 }

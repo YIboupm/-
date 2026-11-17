@@ -35,7 +35,7 @@ public class PoolingListener {
         PurchaseRequest request = requests.get(event.requestId());
         if (request.isNonStandard() || request.getSourced() != null) {
             // sourced individually (buyer, or the category manager's RFQ): its own order, never pooled
-            consolidation.issueSpecial(request.getId());
+            consolidation.issueSpecialOrders(request.getId());
             return;
         }
         if (com.compras.procurement.request.SpendProfile.isRecurring(request.getAttributes())) {

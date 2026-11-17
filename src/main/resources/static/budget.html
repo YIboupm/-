@@ -32,7 +32,7 @@
 <script>renderNav('budget.html');</script>
 <script>
   const $ = id => document.getElementById(id);
-  const TYPE = { RESERVE: 'Reserved', COMMIT: 'Ordered', RELEASE: 'Released' };
+  const TYPE = { RESERVE: 'Reserved', COMMIT: 'Ordered', RELEASE: 'Released', SPEND: 'Delivered (spent)', CANCEL: 'Order cancelled' };
 
   function dept(d) {
     const alloc = Number(d.allocated) || 1;

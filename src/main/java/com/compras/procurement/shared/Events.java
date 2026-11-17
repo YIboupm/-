@@ -88,4 +88,35 @@ public final class Events {
                                    String note, Instant occurredAt) implements DomainEvent {
         public String aggregateId() { return requestId; }
     }
+
+    /** Goods were checked in against a purchase order (possibly part of it). */
+    public record GoodsReceived(String receiptId, String orderNumber, int quantity, int rejected,
+                                List<String> assetTags, String receivedBy, Instant occurredAt) implements DomainEvent {
+        public String aggregateId() { return receiptId; }
+    }
+
+    /** Everything ordered for a request has been delivered: the commitment becomes actual spend. */
+    public record RequestReceived(String requestId, String requestNumber, List<String> assetTags,
+                                  Instant occurredAt) implements DomainEvent {
+        public String aggregateId() { return requestId; }
+    }
+
+    /** An asset entered the register or changed hands. */
+    public record AssetRegistered(String assetTag, String model, String serialNumber, String assignedTo,
+                                  String status, String requestNumber, Instant occurredAt) implements DomainEvent {
+        public String aggregateId() { return assetTag; }
+    }
+
+    /** A purchase order was cancelled before delivery. */
+    public record OrderCancelled(String orderId, String orderNumber, String reason, Instant occurredAt)
+            implements DomainEvent {
+        public String aggregateId() { return orderId; }
+    }
+
+    /** A sourced request's order was cancelled before delivery and the request is sourced again. */
+    public record RequestReopened(String requestId, String requestNumber, List<String> cancelledOrders,
+                                  java.math.BigDecimal releasedCommitment, String reason, String by,
+                                  Instant occurredAt) implements DomainEvent {
+        public String aggregateId() { return requestId; }
+    }
 }

@@ -31,6 +31,7 @@ public record Asset(
         Acquisition acquisition
 ) {
     public static final String IN_USE = "IN_USE";
+    public static final String RETURNED = "RETURNED";
     public static final String RESERVED = "RESERVED";
 
     public record Acquisition(String requestId, String requestNumber, String orderNumber, String supplierName,

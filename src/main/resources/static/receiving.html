@@ -91,6 +91,13 @@
         </div>
       </div>` : ''}
       ${historyHtml(r)}
+      ${(r.supplierReturns || []).map(x => `<div class="small">Returned after acceptance · ${esc(x.at.slice(0,10))} · ${esc(x.receivedBy)} · ${x.quantity} unit(s) · ${esc(x.reason)} ${esc(x.assetTags.join(', '))}</div>`).join('')}
+      ${r.lines.some(l => l.received > 0) ? `<details><summary>Return accepted goods for replacement</summary>
+        <label>Original request</label><select data-f="returnRequest">${r.lines.filter(l => l.received > 0).map(l => `<option value="${esc(l.requestId)}">${esc(l.requestNumber)} · ${l.received} accepted</option>`).join('')}</select>
+        <label>Quantity to return</label><input data-f="returnQty" type="number" min="1" value="1">
+        ${r.tracked ? '<label>Asset tags from the original check-in, one per unit</label><textarea data-f="returnTags"></textarea>' : ''}
+        <label>Reason for return</label><input data-f="returnReason">
+        <button data-act="return">Confirm supplier return</button></details>` : ''}
     </div>`;
   }
 
@@ -121,6 +128,29 @@
       try { await api('POST', `/api/receiving/${r.id}/class`, { assetClass: cls.value }, staff); toast(`${r.orderNumber}: ${cls.value}`); await load(); }
       catch (e) { toast('Error: ' + e.message); cls.value = r.assetClass; }
     };
+    const returnButton = el.querySelector('[data-act="return"]');
+    if (returnButton) {
+      let returnKey, previousBody;
+      returnButton.onclick = async () => {
+        const quantity = Number(f('returnQty').value), reason = f('returnReason').value.trim();
+        const requestId = f('returnRequest').value;
+        const assetTags = (f('returnTags')?.value || '').split(/[\s,]+/).filter(Boolean);
+        if (!Number.isInteger(quantity) || quantity < 1 || !reason || quantity > r.lines.find(l => l.requestId === requestId).received
+            || (r.tracked && (assetTags.length !== quantity || new Set(assetTags).size !== quantity))) {
+          toast('Check the accepted quantity, reason and asset tags.'); return;
+        }
+        if (!confirm(`Return ${quantity} accepted unit(s) on ${r.orderNumber} for replacement?`)) return;
+        const body = {requestId, quantity, reason, assetTags};
+        if (previousBody !== JSON.stringify(body)) {
+          returnKey = crypto.randomUUID(); previousBody = JSON.stringify(body);
+        }
+        returnButton.disabled = true;
+        try {
+          await api('POST', `/api/receiving/${r.id}/returns`, {...body, operationId:returnKey}, staff);
+          await load(); toast('Return recorded; replacement expected.');
+        } catch (e) { toast(e.message); returnButton.disabled = false; }
+      };
+    }
     if (!f('qty')) return;
     f('photo').onchange = async e => {
       const file = e.target.files[0];

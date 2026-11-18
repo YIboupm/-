@@ -78,6 +78,12 @@ public class ReceivingController {
         return register.all();
     }
 
+    @PostMapping("/api/receiving/{id}/returns")
+    public Receipt returnGoods(@PathVariable String id, @RequestHeader("X-Staff-Id") String staffId,
+                               @RequestBody ReceivingService.ReturnInput input) {
+        return receiving.returnGoods(id, staffId, input);
+    }
+
     @PostMapping("/api/assets/{tag}/assign")
     public Asset assign(@PathVariable String tag, @RequestHeader("X-Staff-Id") String staffId,
                         @RequestBody AssignInput body) {

@@ -52,7 +52,7 @@ public class EmployeeContextService {
         List<Asset> visible = new ArrayList<>(assets.findByAssignedTo(employeeId));
         // received-but-not-handed-out assets are earmarked for their request: never offered for reuse
         assets.findBySiteAndAssignedToIsNull(employee.site()).stream()
-                .filter(a -> !Asset.RESERVED.equals(a.status())).forEach(visible::add);
+                .filter(a -> !Asset.RESERVED.equals(a.status()) && !Asset.RETURNED.equals(a.status())).forEach(visible::add);
         return new EmployeeContext(employee, visible);
     }
 }

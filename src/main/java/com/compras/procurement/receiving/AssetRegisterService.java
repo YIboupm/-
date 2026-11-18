@@ -63,7 +63,9 @@ public class AssetRegisterService {
         handed = new Asset(handed.assetTag(), handed.type(), handed.model(), handed.site(),
                 handed.site() + ", with " + employee.name(), handed.assignedTo(), handed.status(), handed.custodian(),
                 handed.attributes(), handed.serialNumber(), handed.acquisition());
-        assets.save(handed);
+        if (assets.assignAvailable(assetTag, employee.id(), handed.location(), handed.custodian()) != 1) {
+            throw new IllegalStateException("This asset is no longer available for assignment.");
+        }
         events.publishEvent(new Events.AssetRegistered(assetTag, handed.model(), handed.serialNumber(), employee.id(),
                 handed.status(), handed.acquisition() == null ? null : handed.acquisition().requestNumber(),
                 Instant.now(clock)));

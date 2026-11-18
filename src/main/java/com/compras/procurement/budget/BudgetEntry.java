@@ -36,6 +36,7 @@ public record BudgetEntry(
          * invoice matches the order and the receipt; the demo has no invoices, so receipt stands in for it.)
          */
         SPEND,
+        RETURN_TO_COMMITMENT,
         /**
          * The order was cancelled before delivery (wrong item or price): the commitment is released and the request
          * is sourced again. Later movements of the request start a new cycle with their own keys.

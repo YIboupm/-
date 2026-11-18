@@ -40,7 +40,7 @@ public enum RequestStatus {
             case POOLED -> Set.of(ORDERED, CANCELLED);
             // SOURCING: a wrong special order is cancelled before delivery and sourced again
             case ORDERED -> Set.of(RECEIVED, SOURCING, CLOSED);
-            case RECEIVED -> Set.of(CLOSED);
+            case RECEIVED -> Set.of(ORDERED, CLOSED);
             case REJECTED, CANCELLED, CLOSED, REDIRECTED -> Set.of();
         };
     }

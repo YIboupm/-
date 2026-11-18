@@ -12,5 +12,5 @@ import java.util.List;
 public record Award(String itemId, String itemName, int quoteIndex, String description, String supplierName,
                     int quantity, BigDecimal unitPrice, BigDecimal total, String reference, Boolean substituted,
                     String substitutionReason, List<BuyerApproval.Confirmation> confirmations, String quoteException,
-                    BigDecimal referenceUnitPrice, Integer deviationPercent, String priceNote) {
+                    BigDecimal referenceUnitPrice, BigDecimal deviationPercent, String priceNote) {
 }

@@ -64,20 +64,22 @@
 
   function deviation(item, unit) {
     if (!item.referenceUnitPrice || !unit) return null;
-    return Math.round((unit - item.referenceUnitPrice) * 100 / item.referenceUnitPrice);
+    const referenceCents = Math.round(item.referenceUnitPrice * 100);
+    const quoteCents = Math.round(unit * 100);
+    return referenceCents ? (quoteCents - referenceCents) * 100 / referenceCents : null;
   }
 
   function lineHtml(r, item) {
     const quotes = quotesOf(r, item);
-    const live = quotes.filter(({ q }) => !q.withdrawn);
+    const live = quotes.filter(({ q }) => !q.withdrawn && q.quantity === item.quantity);
     const suppliers = new Set(live.map(({ q }) => q.supplierName.trim().toLowerCase().replace(/\s+/g, ' '))).size;
     const rows = quotes.map(({ q, i }) => {
       const d = deviation(item, q.unitPrice);
       const far = d !== null && Math.abs(d) > policy.priceDeviationPercent;
       return `<tr style="${q.withdrawn ? 'opacity:.5;text-decoration:line-through' : ''}">
-        <td>${q.withdrawn ? '' : `<input type="radio" name="award-${r.id}-${item.id}" value="${i}">`}</td>
+        <td>${q.withdrawn || q.quantity !== item.quantity ? '—' : `<input type="radio" name="award-${r.id}-${item.id}" value="${i}">`}</td>
         <td>${esc(q.supplierName)}</td><td>${esc(q.description || '')}</td><td class="num">${q.quantity}</td>
-        <td class="num">${money(q.unitPrice, r.currency)}${d === null ? '' : `<br><span class="${far ? 'rc-tag ai' : 'muted small'}">${d > 0 ? '+' : ''}${d}% vs reference</span>`}</td>
+        <td class="num">${money(q.unitPrice, r.currency)}${d === null ? '' : `<br><span class="${far ? 'rc-tag ai' : 'muted small'}">${d > 0 ? '+' : ''}${Number(d.toFixed(4))}% vs reference</span>`}</td>
         <td class="num">${money(q.total, r.currency)}</td>
         <td class="small">${/^https?:\/\//.test(q.reference || '') ? `<a href="${esc(q.reference)}" target="_blank" rel="noopener">evidence</a>` : esc(q.reference || '')}
           <br><span class="muted">${esc(q.addedBy || '')}</span>${q.withdrawn ? `<br><span class="muted">withdrawn: ${esc(q.withdrawn)}</span>` : ''}</td>
@@ -159,7 +161,7 @@
         const d = deviation(item, quote.unitPrice);
         const w = line.querySelector('[data-a="warn"]');
         if (w) w.innerHTML = d !== null && Math.abs(d) > policy.priceDeviationPercent
-          ? `<div class="rc-warn">${money(quote.unitPrice)} is ${Math.abs(d)}% ${d < 0 ? 'below' : 'above'} the reference ${money(item.referenceUnitPrice)}. Does the quote cover the whole item (e.g. the desk, not just a chair) and the full quantity? If it does, explain the price.</div>` : '';
+          ? `<div class="rc-warn">${money(quote.unitPrice)} is ${Number(Math.abs(d).toFixed(4))}% ${d < 0 ? 'below' : 'above'} the reference ${money(item.referenceUnitPrice)}. Does the quote cover the whole item (e.g. the desk, not just a chair) and the full quantity? If it does, explain the price.</div>` : '';
       });
     });
     on('award', async () => {

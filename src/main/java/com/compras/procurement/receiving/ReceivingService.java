@@ -78,11 +78,14 @@ public class ReceivingService {
     private final DeliveryNoteReader reader;
     private final ApplicationEventPublisher events;
     private final Clock clock;
+    private final com.compras.procurement.budget.BudgetService budgets;
 
     public ReceivingService(ReceiptRepository receipts, ConsolidatedOrderRepository orders, RequestService requests,
                             CatalogService catalog, PolicySource policies, AssetRepository assets,
                             StaffRepository staff, SequenceService sequences, AssetClassifier classifier,
-                            DeliveryNoteReader reader, ApplicationEventPublisher events, Clock clock) {
+                            DeliveryNoteReader reader, ApplicationEventPublisher events, Clock clock,
+                            com.compras.procurement.budget.BudgetService budgets) {
+        this.budgets = budgets;
         this.receipts = receipts;
         this.orders = orders;
         this.requests = requests;
@@ -222,12 +225,13 @@ public class ReceivingService {
     // ------------------------------------------------------------------ at the dock
 
     /** Receipts for this receiver's role, open ones first. */
-    public List<Receipt> forReceiver(String staffId) {
+    public synchronized List<Receipt> forReceiver(String staffId) {
         StaffMember who = member(staffId);
         backfill();
         return receipts.findAll().stream()
                 .filter(r -> who.role().name().equals(r.getReceiverRole()))
                 .filter(r -> r.getStatus() != Receipt.Status.CANCELLED)
+                .map(this::reconcileReturns)
                 .sorted(Comparator.comparing((Receipt r) -> r.getStatus() == Receipt.Status.RECEIVED)
                         .thenComparing(Receipt::getCreatedAt, Comparator.reverseOrder()))
                 .toList();
@@ -285,10 +289,11 @@ public class ReceivingService {
     }
 
     /** Checks goods in. Registered items become assets; requests whose goods have all arrived become RECEIVED. */
-    public Receipt checkIn(String receiptId, String staffId, CheckIn in) {
+    public synchronized Receipt checkIn(String receiptId, String staffId, CheckIn in) {
         Receipt receipt = get(receiptId);
         StaffMember who = receiverOf(receipt, staffId);
         open(receipt);
+        reconcileReturns(receipt);
         int outstanding = receipt.outstanding();
         if (in.quantity() < 0 || in.rejected() < 0 || in.quantity() + in.rejected() == 0) {
             throw new IllegalArgumentException("Enter how many units you accept (and how many you send back, if any).");
@@ -365,6 +370,62 @@ public class ReceivingService {
         return saved;
     }
 
+    public record ReturnInput(String operationId, String requestId, int quantity, List<String> assetTags,
+                              String reason) {}
+
+    /** The versioned receipt is the durable record. Replaying an operation completes its projections once. */
+    public synchronized Receipt returnGoods(String receiptId, String staffId, ReturnInput input) {
+        Receipt receipt = get(receiptId);
+        StaffMember who = receiverOf(receipt, staffId);
+        if (blank(input.operationId()) || blank(input.reason()) || input.quantity() <= 0) {
+            throw new IllegalArgumentException("A return needs a reference, a positive quantity and a reason.");
+        }
+        List<String> tags = clean(input.assetTags()).stream().sorted().toList();
+        String reason = input.reason().trim();
+        for (Receipt.SupplierReturn recorded : receipt.getSupplierReturns()) {
+            if (recorded.operationId().equals(input.operationId())) {
+                if (!recorded.requestId().equals(input.requestId()) || recorded.quantity() != input.quantity()
+                        || !recorded.reason().equals(reason) || !recorded.assetTags().equals(tags)) {
+                    throw new IllegalStateException("This return reference already belongs to another return.");
+                }
+                return reconcileReturns(receipt);
+            }
+        }
+        Receipt.Line line = receipt.getLines().stream().filter(l -> l.getRequestId().equals(input.requestId()))
+                .findFirst().orElseThrow(() -> new IllegalArgumentException("Select a request on this receipt."));
+        RequestStatus status = requests.get(input.requestId()).getStatus();
+        if (receipt.getStatus() == Receipt.Status.CANCELLED || input.quantity() > line.getReceived()
+                || (status != RequestStatus.RECEIVED && status != RequestStatus.ORDERED)) {
+            throw new IllegalStateException("Return only units already accepted on an active order.");
+        }
+        if (tags.size() != (receipt.isTracked() ? input.quantity() : 0)
+                || new LinkedHashSet<>(tags).size() != tags.size()) {
+            throw new IllegalArgumentException("Enter exactly one distinct asset tag per tracked unit returned.");
+        }
+        Set<String> alreadyReturned = receipt.getSupplierReturns().stream().flatMap(r -> r.assetTags().stream())
+                .collect(Collectors.toSet());
+        for (String tag : tags) {
+            Asset asset = assets.findById(tag).orElseThrow(() -> new IllegalArgumentException("Unknown tag " + tag));
+            if (asset.acquisition() == null || !receiptId.equals(asset.acquisition().receiptId())
+                    || !input.requestId().equals(asset.acquisition().requestId()) || alreadyReturned.contains(tag)) {
+                throw new IllegalArgumentException(tag + " is not returnable on this request and receipt.");
+            }
+        }
+        receipt.recordReturn(new Receipt.SupplierReturn(input.operationId(), input.requestId(), input.quantity(),
+                tags, reason, who.name(), Instant.now(clock)), line);
+        Receipt saved = receipts.save(receipt);
+        return reconcileReturns(saved);
+    }
+
+    private Receipt reconcileReturns(Receipt receipt) {
+        if (!receipt.returnPending()) return receipt;
+        receipt.getSupplierReturns().stream().flatMap(r -> r.assetTags().stream()).forEach(assets::markReturned);
+        receipt.getSupplierReturns().stream().map(Receipt.SupplierReturn::requestId).distinct()
+                .forEach(this::updateRequest);
+        receipt.finishReturn();
+        return receipts.save(receipt);
+    }
+
     private Asset register(Receipt receipt, Receipt.Line line, String model, boolean substituted, String serial,
                            StaffMember who, Instant now) {
         AssetClass cls = receipt.assetClassOrOther();
@@ -403,10 +464,17 @@ public class ReceivingService {
             }
         }
         List<String> tags = assets.findAll().stream()
-                .filter(a -> a.acquisition() != null && requestId.equals(a.acquisition().requestId()))
+                .filter(a -> a.acquisition() != null && requestId.equals(a.acquisition().requestId())
+                        && !Asset.RETURNED.equals(a.status()))
                 .map(Asset::assetTag).toList();
         requests.recordDelivery(requestId, new PurchaseRequest.Delivery(ordered, received, rejected, tags));
         PurchaseRequest r = requests.get(requestId);
+        if (!complete) {
+            budgets.awaitReplacement(requestId, r.getNumber(), "receiving");
+            if (r.getStatus() == RequestStatus.RECEIVED) {
+                requests.awaitReplacement(requestId, "Accepted goods returned to supplier; replacement outstanding");
+            }
+        }
         // ORDERED means every line is on an order, so every receipt for it exists
         if (complete && r.getStatus() == RequestStatus.ORDERED) {
             requests.markReceived(requestId, tags, "All " + received + " unit(s) delivered"
@@ -451,7 +519,7 @@ public class ReceivingService {
         if (!twice.isEmpty()) {
             problems.add("Serial number(s) entered twice: " + String.join(", ", twice) + ".");
         }
-        List<String> known = serials.stream().filter(assets::existsBySerialNumber).toList();
+        List<String> known = serials.stream().filter(s -> assets.existsBySerialNumberAndStatusNot(s, Asset.RETURNED)).toList();
         if (!known.isEmpty()) {
             problems.add("Already in the asset register: " + String.join(", ", known) + ".");
         }

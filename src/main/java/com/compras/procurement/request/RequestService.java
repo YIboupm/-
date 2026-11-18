@@ -296,7 +296,12 @@ public class RequestService {
                 problems.add("Line " + item.id() + " (" + item.name() + "): choose one of its quotes.");
                 continue;
             }
-            total = total.add(quotes.get(l.quoteIndex()).total());
+            Quote selected = quotes.get(l.quoteIndex());
+            if (selected.quantity() != item.quantity()) {
+                problems.add("Line " + item.id() + ": the quote covers " + selected.quantity()
+                        + " units; the confirmed request needs " + item.quantity() + ".");
+            }
+            total = total.add(selected.total());
         }
         if (!problems.isEmpty()) {
             throw new IllegalStateException(String.join(" ", problems));
@@ -308,7 +313,7 @@ public class RequestService {
             LineAward l = byItem.get(item.id());
             Quote q = quotes.get(l.quoteIndex());
             String at = "Line " + item.id() + " (" + item.name() + "): ";
-            long independent = quotes.stream().filter(x -> x.covers(item.id(), single))
+            long independent = quotes.stream().filter(x -> x.covers(item.id(), single) && x.quantity() == item.quantity())
                     .map(x -> x.supplierName().trim().replaceAll("\\s+", " ").toLowerCase(java.util.Locale.ROOT))
                     .distinct().count();
             String exception = blank(l.quoteException()) ? null : l.quoteException().trim();
@@ -342,14 +347,15 @@ public class RequestService {
                         + "). Say why, e.g. \"model discontinued\".");
             }
             // a price far from what the item costs usually means the quote covers something else
-            Integer deviation = null;
+            BigDecimal deviation = null;
             String priceNote = blank(l.priceNote()) ? null : l.priceNote().trim();
             if (item.referenceUnitPrice() != null && item.referenceUnitPrice().signum() > 0) {
-                deviation = q.unitPrice().subtract(item.referenceUnitPrice()).multiply(BigDecimal.valueOf(100))
-                        .divide(item.referenceUnitPrice(), 0, java.math.RoundingMode.HALF_UP).intValue();
-                if (Math.abs(deviation) > deviationLimit && priceNote == null) {
-                    problems.add(at + "the unit price " + q.unitPrice() + " EUR is " + Math.abs(deviation) + "% "
-                            + (deviation < 0 ? "below" : "above") + " the reference price " + item.referenceUnitPrice()
+                BigDecimal difference = q.unitPrice().subtract(item.referenceUnitPrice()).movePointRight(2);
+                deviation = difference.divide(item.referenceUnitPrice(), java.math.MathContext.DECIMAL64);
+                if (difference.abs().compareTo(item.referenceUnitPrice().multiply(BigDecimal.valueOf(deviationLimit))) > 0
+                        && priceNote == null) {
+                    problems.add(at + "the unit price " + q.unitPrice() + " EUR is " + deviation.abs() + "% "
+                            + (deviation.signum() < 0 ? "below" : "above") + " the reference price " + item.referenceUnitPrice()
                             + " EUR (" + item.referenceSource() + "). Check that the quote covers the whole item and "
                             + "the full quantity, or explain the price.");
                 }
@@ -520,6 +526,11 @@ public class RequestService {
         PurchaseRequest request = get(requestId);
         request.setDelivery(delivery);
         return repository.save(request);
+    }
+
+    /** A supplier return reopened a completed request for replacement on the original order. */
+    public PurchaseRequest awaitReplacement(String id, String note) {
+        return transition(id, RequestStatus.ORDERED, note);
     }
 
     /** Everything ordered for it has been checked in. */

@@ -81,6 +81,28 @@ public class Receipt {
                            List<String> assetTags, String note, boolean aiAssisted, List<String> aiWarnings) {
     }
 
+    public record SupplierReturn(String operationId, String requestId, int quantity, List<String> assetTags,
+                                 String reason, String receivedBy, Instant at) {}
+
+    private List<SupplierReturn> supplierReturns = new ArrayList<>();
+    private boolean returnPending;
+
+    boolean returnPending() { return returnPending; }
+    void finishReturn() { returnPending = false; }
+
+    public List<SupplierReturn> getSupplierReturns() {
+        return supplierReturns == null ? List.of() : List.copyOf(supplierReturns);
+    }
+
+    void recordReturn(SupplierReturn returned, Line line) {
+        if (supplierReturns == null) supplierReturns = new ArrayList<>();
+        supplierReturns.add(returned);
+        returnPending = true;
+        line.take(-returned.quantity());
+        line.sentBack(returned.quantity());
+        status = Status.PARTIAL;
+    }
+
     @Id
     private String id;
     @Version

@@ -51,7 +51,8 @@ public class CompanyResourceService {
         if (mac.isAvailable() && id.equalsIgnoreCase("MAC-SERVER-01")) {
             return Optional.of(fromSnapshot(mac.snapshot()));
         }
-        return assets.findById(id.trim()).filter(a -> !"IN_USE".equals(a.status())).map(this::fromAsset);
+        return assets.findById(id.trim()).filter(a -> "IDLE".equals(a.status()) || "SHARED".equals(a.status()))
+                .map(this::fromAsset);
     }
 
     private CompanyResource fromAsset(Asset a) {

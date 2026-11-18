@@ -122,6 +122,14 @@ public class BudgetService {
 
     /** Delivered: what was committed is now spent. Idempotent; nothing happens without a commitment. */
     public void spend(String requestId, String requestNumber, String actor) {
+        settleDelivery(requestId, requestNumber, actor, true);
+    }
+
+    public void awaitReplacement(String requestId, String requestNumber, String actor) {
+        settleDelivery(requestId, requestNumber, actor, false);
+    }
+
+    private void settleDelivery(String requestId, String requestNumber, String actor, boolean complete) {
         var entries = store.entriesForRequest(requestId);
         if (entries.isEmpty()) return;
         String accountId = accountOf(requestId, null);
@@ -129,13 +137,17 @@ public class BudgetService {
         for (int retry = 0; retry < 100; retry++) {
             BudgetAccount account = store.account(accountId).orElseThrow();
             var mine = current(account, requestId, c);
-            if (mine.stream().anyMatch(e -> e.type() == BudgetEntry.Type.SPEND)) return;
+            long spent = netSpent(mine);
             var commit = mine.stream().filter(e -> e.type() == BudgetEntry.Type.COMMIT).findFirst();
             if (commit.isEmpty()) return;
-            long amount = commit.get().amount();
-            BudgetEntry entry = new BudgetEntry(key(requestId, c, BudgetEntry.Type.SPEND), accountId, requestId,
-                    requestNumber, BudgetEntry.Type.SPEND, amount, 0, false, actor,
-                    "Delivered and checked in: the commitment is now spent", Instant.now(clock));
+            long amount = (complete ? commit.get().amount() : 0) - spent;
+            if (amount == 0) return;
+            var type = complete ? BudgetEntry.Type.SPEND : BudgetEntry.Type.RETURN_TO_COMMITMENT;
+            long previous = mine.stream().filter(e -> e.type() == type).count();
+            String movement = key(requestId, c, type) + (previous == 0 ? "" : "#" + previous);
+            BudgetEntry entry = new BudgetEntry(movement, accountId, requestId,
+                    requestNumber, type, Math.abs(amount), 0, false, actor, complete
+                    ? "All goods received" : "Goods returned; awaiting replacement on original order", Instant.now(clock));
             if (store.compareAndSet(account, account.appendSpend(entry, amount))) return;
         }
         throw new IllegalStateException("Budget contention: retry the operation");
@@ -174,7 +186,7 @@ public class BudgetService {
         var entries = store.account(accountOf(requestId, null)).map(a -> current(a, requestId, c)).orElse(all);
         long committed = entries.stream().filter(e -> e.type() == BudgetEntry.Type.COMMIT)
                 .mapToLong(BudgetEntry::amount).sum()
-                - entries.stream().filter(e -> e.type() == BudgetEntry.Type.SPEND).mapToLong(BudgetEntry::amount).sum();
+                - netSpent(entries);
         boolean terminal = entries.stream().anyMatch(e -> e.type() != BudgetEntry.Type.RESERVE);
         long reserved = terminal ? 0 : entries.stream().mapToLong(BudgetEntry::amount).sum();
         return new Position(reserved, committed);
@@ -214,7 +226,15 @@ public class BudgetService {
         java.util.Set<String> keys = java.util.Arrays.stream(BudgetEntry.Type.values())
                 .filter(t -> t != BudgetEntry.Type.CANCEL).map(t -> key(requestId, c, t))
                 .collect(java.util.stream.Collectors.toSet());
-        return mine.stream().filter(e -> keys.contains(e.id())).toList();
+        return mine.stream().filter(e -> keys.contains(e.id().split("#", 2)[0])).toList();
+    }
+
+    private static long netSpent(List<BudgetEntry> entries) {
+        return entries.stream().mapToLong(e -> switch (e.type()) {
+            case SPEND -> e.amount();
+            case RETURN_TO_COMMITMENT -> -e.amount();
+            default -> 0;
+        }).sum();
     }
 
     /** The account of the request's latest reservation (a request sourced again may be in a later quarter). */

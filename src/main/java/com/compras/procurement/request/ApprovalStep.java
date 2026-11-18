@@ -32,6 +32,17 @@ public record ApprovalStep(String role, String approverId, String approverName, 
         return "PENDING".equals(status);
     }
 
+    /** The approver returned the award to the buyer instead of approving or rejecting it. */
+    public ApprovalStep sendBack(Instant at, String note) {
+        return new ApprovalStep(role, approverId, approverName, approverTitle, reason, stage, "SENT_BACK", at, note,
+                rules);
+    }
+
+    /** A decision that no longer counts but stays in the record (a lapsed approval, a send-back). */
+    public boolean isHistory() {
+        return "SUPERSEDED".equals(status) || "SENT_BACK".equals(status);
+    }
+
     /** An approval of a price that no longer stands (the order was cancelled and the request sourced again). */
     public ApprovalStep supersede(Instant at, String why) {
         return new ApprovalStep(role, approverId, approverName, approverTitle, reason, stage, "SUPERSEDED", at,

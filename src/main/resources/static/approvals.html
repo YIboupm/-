@@ -56,11 +56,12 @@
       ${s.stage === 'NEED' ? itemsHtml(r) : awardsHtml(r)}
       ${s.stage === 'NEED' ? '' : budgetPanel(item.budget, amount, r.currency)}
       <div class="form-row" style="grid-template-columns: 1fr; margin-top:10px">
-        <input type="text" placeholder="Note (required to reject or to send to strategic review)" data-f="note">
+        <input type="text" placeholder="Note (required to send back, reject or send to strategic review)" data-f="note">
       </div>
       <div class="actions">
         <button class="primary" data-act="approve">Approve</button>
-        <button data-act="reject">Reject</button>
+        ${s.stage !== 'NEED' && r.sourced ? '<button data-act="sendback" title="The need is fine, the award is not: back to the buyer to source again">Send back to buyer</button>' : ''}
+        <button data-act="reject" title="The request should not go ahead at all: it ends here">Reject</button>
         <button data-act="strategic" title="Policy 6/7: the need is fine but how to buy it needs procurement">Strategic review</button>
       </div>
     </div>`;
@@ -88,6 +89,15 @@
           await api('POST', `/api/approvals/${item.request.id}/strategic`,
             { approve: false, note: el.querySelector('[data-f="note"]').value.trim() }, id);
           toast(`${item.request.number} sent to strategic review`);
+          await load();
+        } catch (e) { toast('Error: ' + e.message); }
+      };
+      const back = el.querySelector('[data-act="sendback"]');
+      if (back) back.onclick = async () => {
+        try {
+          await api('POST', `/api/approvals/${item.request.id}/send-back`,
+            { approve: false, note: el.querySelector('[data-f="note"]').value.trim() }, id);
+          toast(`${item.request.number} sent back to the buyer`);
           await load();
         } catch (e) { toast('Error: ' + e.message); }
       };

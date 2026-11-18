@@ -55,6 +55,14 @@ public class ApprovalStepHandler implements StepHandler {
         if (chain.stream().noneMatch(ApprovalStep::isPending)) {
             return Outcome.DONE;
         }
+        // lapsed approvals and send-backs stay in the record, after the approvals that still count
+        List<ApprovalStep> history = r.getApprovals().stream().filter(ApprovalStep::isHistory).toList();
+        if (!history.isEmpty()) {
+            List<ApprovalStep> full = new java.util.ArrayList<>(chain.stream().filter(ApprovalStep::isApproved).toList());
+            full.addAll(history);
+            full.addAll(chain.stream().filter(x -> !x.isApproved()).toList());
+            chain = full;
+        }
         if (r.getStatus() == RequestStatus.PENDING_APPROVAL) {
             requests.updateApprovals(r.getId(), chain); // the next stage follows directly
         } else {

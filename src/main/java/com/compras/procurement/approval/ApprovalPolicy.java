@@ -126,7 +126,7 @@ public class ApprovalPolicy {
                     .filter(m -> !m.name().equalsIgnoreCase(in.requesterName()))
                     // one person holds one step per decision: approving the need and later the price is normal
                     .filter(m -> chain.stream().noneMatch(s -> s.approverId().equals(m.id())
-                            && java.util.Objects.equals(s.stage(), in.stage()) && !"SUPERSEDED".equals(s.status())))
+                            && java.util.Objects.equals(s.stage(), in.stage()) && !s.isHistory()))
                     .findFirst().orElse(null);
             if (candidate != null) {
                 return candidate;

@@ -96,7 +96,7 @@ function myRequestsHtml(list) {
     if (d && d.ordered) {
       outcome += `<div class="out ${d.received === d.ordered ? 'ok' : ''}">Delivered ${d.received} of ${d.ordered}${d.rejected ? ` · ${d.rejected} sent back to the supplier, replacement expected` : ''}${(d.assetTags || []).length ? ` · asset${d.assetTags.length > 1 ? 's' : ''} ${esc(d.assetTags.join(', '))}` : ''}</div>`;
     } else if (r.status === 'ORDERED') outcome += '<div class="out muted">Waiting for the delivery.</div>';
-    outcome = flowHtml(r) + approvalsHtml(r) + budgetLine(r) + awardsHtml(r) + outcome;
+    outcome = flowHtml(r) + sentBackHtml(r) + approvalsHtml(r) + budgetLine(r) + awardsHtml(r) + outcome;
     if (['PENDING_APPROVAL', 'BUYER_REVIEW', 'SOURCING', 'STRATEGIC_REVIEW', 'APPROVED', 'POOLED'].includes(r.status)) {
       outcome += `<div class="out"><button class="small-btn" data-cancel="${esc(r.id)}" data-number="${esc(r.number)}">Cancel request</button></div>`;
     }
@@ -112,7 +112,7 @@ function myRequestsHtml(list) {
 /** The request's route as the policy composed it: one chip per step, with where the request stands. */
 function flowHtml(r) {
   if (!r.flow || !r.flow.length) return '';
-  const mark = { DONE: '✓ ', ACTIVE: '● ', SKIPPED: '– ' };
+  const mark = { DONE: '✓ ', ACTIVE: '● ', SKIPPED: '– ', REJECTED: '✗ ', CANCELLED: '✗ ' };
   return '<div class="flow-steps">' + r.flow.map(s =>
     `<span class="step-chip ${esc(s.status)}" title="${esc(s.type)}${s.stage ? ' · ' + esc(s.stage) : ''}${s.owner ? ' · ' + esc(s.owner) : ''}">${mark[s.status] || ''}${esc(s.label || s.type)}</span>`)
     .join('<span class="step-arrow">›</span>')
@@ -126,8 +126,9 @@ const ROLE_LABEL = { LINE_MANAGER: 'Line manager', DEPARTMENT_HEAD: 'Department 
 function approvalsHtml(r) {
   const steps = r.approvals || [];
   if (!steps.length) return '';
-  const icon = s => s.status === 'APPROVED' ? '✓' : s.status === 'REJECTED' ? '✗' : s.status === 'ESCALATED' ? '⇢' : '…';
-  return '<div class="chain">' + steps.map(s => `<span class="step ${s.status}" title="${esc(s.reason)}">${icon(s)} ${esc(s.approverName)}
+  const icon = s => s.status === 'APPROVED' ? '✓' : s.status === 'REJECTED' ? '✗' : s.status === 'ESCALATED' ? '⇢'
+    : s.status === 'SENT_BACK' ? '↩' : s.status === 'SUPERSEDED' ? '⊘' : '…';
+  return '<div class="chain">' + steps.map(s => `<span class="step ${s.status}" title="${esc(s.status === 'SENT_BACK' ? 'Sent back: ' + (s.note || '') : s.status === 'SUPERSEDED' ? 'No longer counts: ' + (s.note || '') : s.reason)}">${icon(s)} ${esc(s.approverName)}
       <span class="muted small">${esc(ROLE_LABEL[s.role] || s.role)}</span></span>`).join('<span class="arrow">→</span>') + '</div>';
 }
 
@@ -183,6 +184,14 @@ function itemsHtml(r) {
     + items.map(i => `<tr><td>${esc(i.id)}</td><td><b>${esc(i.name)}</b>${i.preferredModel ? `<br><span class="muted small">employee's choice: ${esc(i.preferredModel)}</span>` : ''}</td><td>${i.quantity}</td>
       <td>${(i.requirements || []).map(q => `${esc(q.description)}${q.strength === 'preference' ? ' <span class="muted small">(nice to have)</span>' : ''}`).join('<br>') || '<span class="muted">—</span>'}</td>
       <td>${i.referenceUnitPrice ? `${money(i.referenceUnitPrice)} / unit<br><a class="small" href="${esc(i.referenceSource)}" target="_blank" rel="noopener">source</a>` : '<span class="muted">none found</span>'}</td></tr>`).join('') + '</table>';
+}
+
+/** The last award was returned by an approver: why, and what it was. */
+function sentBackHtml(r) {
+  const b = r.sentBack;
+  if (!b) return '';
+  return `<div class="rc-warn"><b>↩ Sent back by ${esc(b.by)} (${esc(ROLE_LABEL[b.role] || b.role)})</b>: ${esc(b.reason)}
+    ${b.previousAward ? `<br><span class="small">Previous award: ${esc(b.previousAward)}</span>` : ''}</div>`;
 }
 
 /** What the buyer awarded, line by line, with the price check: for approvers, the employee and goods-in. */

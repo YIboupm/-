@@ -158,6 +158,31 @@ public class FlowEngine {
         return requests.recordFlow(requestId, r.getPolicyVersion(), flow);
     }
 
+    /** A rejected or cancelled request: the step it was at shows that it stopped there. */
+    @EventListener
+    public void on(Events.RequestRejected event) {
+        stop(event.requestId(), FlowStep.REJECTED);
+    }
+
+    @EventListener
+    public void on(Events.RequestCancelled event) {
+        stop(event.requestId(), FlowStep.CANCELLED);
+    }
+
+    private void stop(String requestId, String status) {
+        PurchaseRequest r = requests.get(requestId);
+        if (r.getFlow().isEmpty()) {
+            return;
+        }
+        List<FlowStep> flow = new ArrayList<>(r.getFlow());
+        for (int i = 0; i < flow.size(); i++) {
+            if (FlowStep.ACTIVE.equals(flow.get(i).status())) {
+                flow.set(i, flow.get(i).with(status));
+            }
+        }
+        requests.recordFlow(requestId, r.getPolicyVersion(), flow);
+    }
+
     // ------------------------------------------------------------------ the engine
 
     private void run(String requestId, boolean resuming) {

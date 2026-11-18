@@ -86,6 +86,34 @@ public class ApprovalService {
         return flow.resume(requestId); // the chain is complete: the route continues
     }
 
+    /**
+     * The approver accepts the need but not the award (wrong item, a price that does not add up): the request goes
+     * back to whoever sourced it, with the reason. Only for a priced request; the need itself is approved or
+     * rejected, not sent back.
+     */
+    public PurchaseRequest sendBack(String requestId, String staffId, String note) {
+        PurchaseRequest r = requests.get(requestId);
+        ApprovalStep step = r.currentStep();
+        if (r.getStatus() != RequestStatus.PENDING_APPROVAL || step == null) {
+            throw new IllegalStateException(r.getNumber() + " is not waiting for an approval.");
+        }
+        if (!step.approverId().equals(staffId)) {
+            throw new IllegalStateException(r.getNumber() + " is waiting for " + step.approverName() + ", not you.");
+        }
+        if (r.getSourced() == null || "NEED".equals(step.stage())) {
+            throw new IllegalStateException("Only an award can be sent back to the buyer. To stop the request, reject it.");
+        }
+        if (note == null || note.isBlank()) {
+            throw new IllegalStateException("Tell the buyer what is wrong with the award.");
+        }
+        Instant now = Instant.now(clock);
+        PurchaseRequest back = requests.sendBackToSourcing(requestId, step, note.trim());
+        flow.backToSourcing(requestId);
+        events.publishEvent(new Events.AwardSentBack(requestId, back.getNumber(), step.approverName(), step.role(),
+                note.trim(), now));
+        return requests.get(requestId);
+    }
+
     /** Requests waiting for this person. */
     public List<PurchaseRequest> inbox(String staffId) {
         return requests.all().stream()

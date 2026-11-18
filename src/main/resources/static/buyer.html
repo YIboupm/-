@@ -44,6 +44,7 @@
       <div class="brief-title">${esc(r.title || r.categoryName)}</div>
       <div class="muted">${esc(r.requester.name)} · ${esc(r.requester.department)}</div>
       ${r.strategic ? `<div class="budget-badge">Strategic review: ${esc(r.strategic.reasons.join('; '))}${r.strategic.note ? ' · decision: ' + esc(r.strategic.note) : ''}</div>` : ''}
+      ${sentBackHtml(r)}
       ${approvalsHtml(r)}`;
   }
 

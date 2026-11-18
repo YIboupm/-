@@ -398,6 +398,13 @@ public class RequestService {
         return repository.save(request);
     }
 
+    /** See {@link PurchaseRequest#sendBackToSourcing}. */
+    public PurchaseRequest sendBackToSourcing(String requestId, ApprovalStep step, String note) {
+        PurchaseRequest request = get(requestId);
+        request.sendBackToSourcing(step, Instant.now(clock), note);
+        return repository.save(request);
+    }
+
     private static boolean blank(String s) {
         return s == null || s.isBlank();
     }

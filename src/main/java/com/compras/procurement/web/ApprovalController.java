@@ -80,6 +80,13 @@ public class ApprovalController {
         return approvals.decide(requestId, staffId, body.approve(), body.note());
     }
 
+    /** The need stands, the award does not: back to whoever sourced it, with the reason. */
+    @PostMapping("/approvals/{requestId}/send-back")
+    public PurchaseRequest sendBack(@PathVariable String requestId, @RequestHeader("X-Staff-Id") String staffId,
+                                    @RequestBody Decision body) {
+        return approvals.sendBack(requestId, staffId, body.note());
+    }
+
     @GetMapping("/budgets")
     public BudgetAccess.Overview budgets(@RequestHeader("X-Staff-Id") String staffId) {
         return budgets.overview(staffId);

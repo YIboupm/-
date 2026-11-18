@@ -119,4 +119,10 @@ public final class Events {
                                   Instant occurredAt) implements DomainEvent {
         public String aggregateId() { return requestId; }
     }
+
+    /** An approver returned the award to the buyer: the need stands, the price is sourced again. */
+    public record AwardSentBack(String requestId, String requestNumber, String approver, String role, String reason,
+                                Instant occurredAt) implements DomainEvent {
+        public String aggregateId() { return requestId; }
+    }
 }

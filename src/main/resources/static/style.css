@@ -271,3 +271,7 @@ table.rules code, .pol-when { font-family: ui-monospace, SFMono-Regular, Menlo, 
 .rc-drop img { max-width: 100%; max-height: 160px; display: block; margin-top: 6px; border-radius: 6px; }
 .rc-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
 .rc-filter { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+
+.chain .step.SENT_BACK { background: var(--warn-soft); color: var(--warn); }
+.chain .step.SUPERSEDED { opacity: .55; text-decoration: line-through; }
+.step-chip.REJECTED, .step-chip.CANCELLED { background: var(--err-soft); color: var(--err); font-weight: 600; }

@@ -99,6 +99,8 @@ public class PurchaseRequest {
     private List<SuggestedModel> suggestedModels = new ArrayList<>();
     /** Lines of a special request (empty on catalog requests and on special requests from before lines). */
     private List<SpecialItem> items = new ArrayList<>();
+    /** Why the last award was returned to the buyer, until the next award. */
+    private SendBack sentBack;
     /** What the buyer awarded, one per line. */
     private List<Award> awards = new ArrayList<>();
     private List<ApprovalStep> approvals = new ArrayList<>();
@@ -271,6 +273,36 @@ public class PurchaseRequest {
     public void recordAwards(List<Award> awards, SourcedItem summary) {
         this.awards = new ArrayList<>(awards);
         this.sourced = summary;
+        this.sentBack = null;
+    }
+
+    public record SendBack(String by, String role, String reason, Instant at, String previousAward) {
+    }
+
+    public SendBack getSentBack() { return sentBack; }
+
+    /**
+     * An approver returned the award to the buyer: the need stands, the price does not. Approvals of that price
+     * lapse, the approver's step is recorded as sent back, the steps still to come are dropped.
+     */
+    public void sendBackToSourcing(ApprovalStep step, Instant at, String note) {
+        String previous = sourced == null ? null : sourced.description() + " · " + sourced.supplierName() + " · "
+                + sourced.total() + " " + currency;
+        List<ApprovalStep> kept = new ArrayList<>();
+        for (ApprovalStep s : getApprovals()) {
+            if (s.equals(step)) {
+                kept.add(s.sendBack(at, note));
+            } else if (s.isApproved() && !"NEED".equals(s.stage())) {
+                kept.add(s.supersede(at, "Award sent back by " + step.approverName()));
+            } else if (!s.isPending()) {
+                kept.add(s);
+            }
+        }
+        this.approvals = kept;
+        this.sentBack = new SendBack(step.approverName(), step.role(), note, at, previous);
+        this.sourced = null;
+        this.awards = new ArrayList<>();
+        moveTo(RequestStatus.SOURCING, at, "Sent back to the buyer by " + step.approverName() + ": " + note);
     }
 
     /** The order was cancelled before delivery: the awards and the approvals of their price no longer stand. */
